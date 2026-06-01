@@ -1,24 +1,36 @@
-// Detects LinkedIn's native Save control on feed posts and triggers capture.
+// Detects LinkedIn's native Save (social bar or ⋯ overflow menu) and captures the post.
 (function () {
   const LIS = (globalThis.LIS = globalThis.LIS || {});
 
   const HOOK_FLAG = "data-lis-native-hook";
-  const CONTEXT_TTL_MS = 8000;
+  const MENU_HOOK_FLAG = "data-lis-menu-hook";
+  const CONTEXT_TTL_MS = 20000;
   const recentContext = { postEl: null, at: 0 };
   const SOCIAL_BAR =
-    ".feed-shared-social-action-bar, .social-details-social-actions, .feed-shared-social-action-bar__action-button";
+    ".feed-shared-social-action-bar, .social-details-social-actions";
 
-  function getActionElement(target) {
-    return target?.closest?.(
-      "button, [role='menuitem'], [role='button'], a[role='button']"
-    );
-  }
+  const MENU_ROOT =
+    "[role='menu'], .artdeco-dropdown__content, .artdeco-dropdown__content-inner";
 
-  function rememberPostContext(target) {
-    const postEl = LIS.findPostFrom(target);
+  const ACTION_SELECTOR = [
+    "button",
+    "[role='menuitem']",
+    ".artdeco-dropdown__item",
+    "[role='button']",
+    "a[role='button']",
+  ].join(", ");
+
+  const OVERFLOW_TRIGGER =
+    ".feed-shared-control-menu__trigger, button.feed-shared-control-menu__trigger, button[aria-label*='control menu' i], button[aria-label*='Open control menu' i]";
+
+  function rememberPost(postEl) {
     if (!postEl) return;
     recentContext.postEl = postEl;
     recentContext.at = Date.now();
+  }
+
+  function rememberPostContext(target) {
+    rememberPost(LIS.findPostFrom(target));
   }
 
   function resolvePostFromContext(target) {
@@ -26,6 +38,14 @@
     if (direct) return direct;
     const fresh = Date.now() - recentContext.at < CONTEXT_TTL_MS;
     return fresh ? recentContext.postEl : null;
+  }
+
+  function getActionElement(target) {
+    return target?.closest?.(ACTION_SELECTOR);
+  }
+
+  function isInDropdown(el) {
+    return !!el?.closest?.(MENU_ROOT);
   }
 
   function getActionText(el) {
@@ -52,12 +72,11 @@
   }
 
   function isSaveIntentText(text) {
-    // English + common localized strings.
     return /\bsave\b|bookmark|сохран|збереж|merken|guardar|salvar/i.test(text);
   }
 
   function isUnsaveIntentText(text) {
-    return /unsave|saved|remove|unbookmark|удал|зберігається|saved to/i.test(text);
+    return /unsave|remove\s+bookmark|unbookmark|удал|збережено/i.test(text);
   }
 
   function hasSaveSemantics(el) {
@@ -74,10 +93,13 @@
       return true;
     }
 
-    // Icon-only save buttons often expose these signals.
     const useEls = el.querySelectorAll("svg use");
     for (const useEl of useEls) {
-      const ref = (useEl.getAttribute("href") || useEl.getAttribute("xlink:href") || "").toLowerCase();
+      const ref = (
+        useEl.getAttribute("href") ||
+        useEl.getAttribute("xlink:href") ||
+        ""
+      ).toLowerCase();
       if (ref.includes("bookmark") || ref.includes("save")) return true;
     }
     if (el.querySelector('svg[aria-label*="bookmark" i], svg[aria-label*="save" i]')) {
@@ -87,14 +109,20 @@
     return false;
   }
 
-  LIS.isNativeSaveClick = function isNativeSaveClick(target) {
+  function isSaveAction(target) {
     const el = getActionElement(target);
-    if (!el || el.classList?.contains("lis-save-btn")) return false;
-    const postEl = resolvePostFromContext(target);
-    if (!postEl) return false;
+    if (!el || el.classList?.contains("lis-save-btn")) return null;
     const text = getActionText(el);
-    if (isUnsaveIntentText(text)) return false;
-    return hasSaveSemantics(el);
+    if (isUnsaveIntentText(text)) return null;
+    if (!hasSaveSemantics(el) && !isSaveIntentText(text)) return null;
+    return el;
+  }
+
+  LIS.isNativeSaveClick = function isNativeSaveClick(target) {
+    const el = isSaveAction(target);
+    if (!el) return false;
+    if (isInDropdown(el)) return true;
+    return !!resolvePostFromContext(target);
   };
 
   function isSavedState(btn) {
@@ -102,24 +130,30 @@
     const text = getActionText(btn);
     if (isUnsaveIntentText(text)) return true;
     if (btn.getAttribute("aria-pressed") === "true") return true;
-    const active = (
-      btn.getAttribute("data-state") ||
-      btn.getAttribute("aria-current") ||
-      ""
-    ).toLowerCase();
-    if (active === "true" || active === "active") return true;
     return false;
   }
 
   LIS.findSaveButton = function findSaveButton(postEl) {
-    const bar = postEl.querySelector(SOCIAL_BAR.split(",")[0].trim());
+    const bar = postEl.querySelector(SOCIAL_BAR);
     const root = bar || postEl;
-    const buttons = root.querySelectorAll("button");
-    for (const btn of buttons) {
+    for (const btn of root.querySelectorAll("button")) {
       if (hasSaveSemantics(btn) || isSavedState(btn)) return btn;
     }
     return null;
   };
+
+  function attachOverflowTriggerHook(postEl) {
+    const triggers = postEl.querySelectorAll(OVERFLOW_TRIGGER);
+    for (const trigger of triggers) {
+      if (trigger.hasAttribute(MENU_HOOK_FLAG)) continue;
+      trigger.setAttribute(MENU_HOOK_FLAG, "1");
+      trigger.addEventListener(
+        "click",
+        () => rememberPost(postEl),
+        true
+      );
+    }
+  }
 
   function attachSaveObserver(postEl) {
     if (postEl.hasAttribute(HOOK_FLAG)) return;
@@ -129,12 +163,9 @@
     if (!btn) return;
 
     let wasSaved = isSavedState(btn);
-
     const observer = new MutationObserver(() => {
       const nowSaved = isSavedState(btn);
-      if (!wasSaved && nowSaved) {
-        LIS.capturePost(postEl);
-      }
+      if (!wasSaved && nowSaved) LIS.capturePost(postEl);
       wasSaved = nowSaved;
     });
 
@@ -145,28 +176,47 @@
   }
 
   LIS.hookPost = function hookPost(postEl) {
+    attachOverflowTriggerHook(postEl);
     attachSaveObserver(postEl);
   };
 
   LIS.hookAllPosts = function hookAllPosts() {
-    for (const postEl of LIS.findPosts()) {
-      LIS.hookPost(postEl);
-    }
+    for (const postEl of LIS.findPosts()) LIS.hookPost(postEl);
   };
 
-  LIS.onNativeSaveClick = function onNativeSaveClick(event) {
-    rememberPostContext(event.target);
-    if (!LIS.isNativeSaveClick(event.target)) return;
-    const postEl = resolvePostFromContext(event.target);
+  function handleSaveClick(target) {
+    if (!LIS.isNativeSaveClick(target)) return;
+
+    const postEl = resolvePostFromContext(target);
     if (!postEl) {
-      LIS.showToast("LinkedIn Saver: found Save, but couldn't map it to a post", "error");
+      LIS.showToast(
+        "LinkedIn Saver: open ⋯ on the post, then tap Save again",
+        "error"
+      );
       return;
     }
+
     LIS.showToast("LinkedIn Saver: capturing saved post…", "info");
     LIS.capturePost(postEl).then((resp) => {
       if (resp?.ok) LIS.showToast("LinkedIn Saver: captured ✓", "info");
     });
+  }
+
+  LIS.onNativeSaveClick = function onNativeSaveClick(event) {
+    const trigger = event.target?.closest?.(OVERFLOW_TRIGGER);
+    if (trigger) rememberPostContext(trigger);
+    else rememberPostContext(event.target);
+
+    handleSaveClick(event.target);
   };
 
   document.addEventListener("click", LIS.onNativeSaveClick, true);
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      const trigger = e.target?.closest?.(OVERFLOW_TRIGGER);
+      if (trigger) rememberPostContext(trigger);
+    },
+    true
+  );
 })();

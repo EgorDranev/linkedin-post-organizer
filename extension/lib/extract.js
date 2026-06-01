@@ -5,6 +5,7 @@
 
   const POST_SELECTOR = [
     "div.feed-shared-update-v2[data-urn]",
+    "div.feed-shared-update-v2",
     "[data-urn^='urn:li:activity']",
     "[data-urn*='urn:li:activity:']",
     "[data-id^='urn:li:activity']",
@@ -17,16 +18,32 @@
   }
 
   LIS.findPosts = function findPosts() {
-    return document.querySelectorAll(POST_SELECTOR);
+    return document.querySelectorAll(
+      "div.feed-shared-update-v2, [data-urn^='urn:li:activity']"
+    );
   };
 
   LIS.findPostFrom = function findPostFrom(el) {
     if (!el?.closest) return null;
-    return el.closest(POST_SELECTOR);
+
+    const direct = el.closest(POST_SELECTOR);
+    if (direct) return direct;
+
+    let node = el.parentElement;
+    for (let depth = 0; depth < 25 && node; depth++) {
+      if (node.classList?.contains("feed-shared-update-v2")) return node;
+      const urn = node.getAttribute?.("data-urn") || "";
+      if (urn.includes("urn:li:activity")) return node;
+      node = node.parentElement;
+    }
+    return null;
   };
 
   LIS.getPostUrn = function getPostUrn(postEl) {
-    return postEl?.getAttribute("data-urn") || "";
+    const direct = postEl?.getAttribute("data-urn") || "";
+    if (direct.includes("activity")) return direct;
+    const inner = postEl?.querySelector?.("[data-urn*='urn:li:activity']");
+    return inner?.getAttribute("data-urn") || direct;
   };
 
   LIS.extract = function extract(postEl) {

@@ -44,6 +44,16 @@ loop. `vercel dev` runs the same serverless functions you deploy.
    `http://localhost:3000` for local dev), password if configured, and **Save settings**.
 3. On linkedin.com, use LinkedIn’s built-in **Save** on any feed post — it is sent to your app automatically.
 
+### Auto-reload while editing the extension
+
+Vercel deploys the web app only; Chrome still runs your local unpacked extension. To reload it on save:
+
+```bash
+npm run ext:watch
+```
+
+Keep that terminal open. After you change any file under `extension/`, the watcher reloads the extension and refreshes open LinkedIn tabs. Reload the unpacked extension once after pulling this feature so `dev-reload.js` is picked up.
+
 > The content script reads LinkedIn’s DOM, whose class names change often. If auto-capture stops working:
 > 1. Open DevTools on a feed post and inspect the native **Save** button (`aria-label`, action bar classes).
 > 2. Update selectors in [`extension/lib/extract.js`](extension/lib/extract.js) (post text/author) and [`extension/native-save.js`](extension/native-save.js) (save button detection).

@@ -4,6 +4,8 @@
 // Target server is configurable from the popup (stored in chrome.storage).
 // Default points at local dev; set it to your Vercel URL once deployed.
 
+importScripts("dev-reload.js");
+
 const DEFAULT_SERVER = "http://localhost:3000";
 
 async function getConfig() {
