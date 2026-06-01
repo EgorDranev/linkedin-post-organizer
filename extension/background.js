@@ -38,7 +38,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })
     .catch((err) => {
       flashBadge("!", "#c0392b");
-      sendResponse({ ok: false, error: err.message });
+      const msg = err?.message || "save failed";
+      sendResponse({ ok: false, error: msg });
     });
 
   return true; // keep the message channel open for the async response

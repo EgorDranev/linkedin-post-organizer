@@ -40,6 +40,21 @@ export default function App() {
     if (authed) reload();
   }, [authed, reload]);
 
+  // Pick up posts saved via the extension while this tab was in the background.
+  useEffect(() => {
+    if (!authed) return;
+    let lastReload = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastReload < 30_000) return;
+      lastReload = now;
+      reload();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [authed, reload]);
+
   const logout = async () => {
     await api.logout();
     setAuthed(false);
@@ -124,8 +139,8 @@ export default function App() {
 
       {!loading && !error && posts.length === 0 && (
         <p className="muted empty">
-          No saved posts yet. Paste one above, or use the browser extension on
-          LinkedIn.
+          No saved posts yet. Paste one above, or save a post on LinkedIn with
+          the browser extension connected.
         </p>
       )}
 

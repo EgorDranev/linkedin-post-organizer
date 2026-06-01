@@ -11,7 +11,7 @@ and **Neon Postgres** for storage.
 | `src/` | Review posts, accept/edit tags | Vite + React |
 | `api/` | Store posts, suggest tags | Vercel serverless functions |
 | `api/_lib/` | DB layer + heuristic tagger | `@neondatabase/serverless` |
-| `extension/` | "💾 Save" button on linkedin.com | Chrome MV3 |
+| `extension/` | Auto-capture on LinkedIn native Save | Chrome MV3 |
 
 ## Deploy
 
@@ -41,11 +41,13 @@ loop. `vercel dev` runs the same serverless functions you deploy.
 
 1. Chrome → `chrome://extensions` → enable **Developer mode** → **Load unpacked** → `extension/`.
 2. Click the extension icon, set **App server URL** to your Vercel URL (or
-   `http://localhost:3000` for local dev), and Save.
-3. On linkedin.com, each post gets a **💾 Save** button.
+   `http://localhost:3000` for local dev), password if configured, and **Save settings**.
+3. On linkedin.com, use LinkedIn’s built-in **Save** on any feed post — it is sent to your app automatically.
 
-> The content script reads LinkedIn's DOM, whose class names change often. If
-> capture breaks, update the selectors in [`extension/content.js`](extension/content.js).
+> The content script reads LinkedIn’s DOM, whose class names change often. If auto-capture stops working:
+> 1. Open DevTools on a feed post and inspect the native **Save** button (`aria-label`, action bar classes).
+> 2. Update selectors in [`extension/lib/extract.js`](extension/lib/extract.js) (post text/author) and [`extension/native-save.js`](extension/native-save.js) (save button detection).
+> 3. Confirm the popup shows a connected server and the correct password (`/api/session`).
 
 ## How tag suggestion works
 
@@ -60,5 +62,5 @@ Swapping in an LLM later is a one-function change (`suggestTags`).
 
 ## Scope (v1)
 
-Built: save a post → see suggested tags → accept / reject / add. Manual paste + extension capture.
+Built: save a post → see suggested tags → accept / reject / add. Manual paste + extension auto-capture on LinkedIn Save.
 Deferred (schema already supports them): browse/filter by tag, tag management, collections.

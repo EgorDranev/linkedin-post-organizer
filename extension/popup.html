@@ -5,7 +5,7 @@
     <style>
       body {
         font: 14px Inter, -apple-system, sans-serif;
-        width: 240px;
+        width: 260px;
         margin: 0;
         padding: 14px;
         color: #1d2226;
@@ -15,7 +15,8 @@
       .ok { color: #0a7d3c; }
       .bad { color: #c0392b; }
       label { display: block; font-size: 12px; color: #6b7280; margin: 10px 0 4px; }
-      input {
+      input[type="text"],
+      input[type="password"] {
         width: 100%;
         box-sizing: border-box;
         border: 1px solid #e3e6ea;
@@ -24,6 +25,14 @@
         font: inherit;
         font-size: 13px;
       }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        font-size: 13px;
+      }
+      .row input { width: auto; margin: 0; }
       button {
         margin-top: 8px;
         background: #0a66c2;
@@ -35,7 +44,7 @@
         cursor: pointer;
       }
       a { display: block; margin-top: 10px; color: #0a66c2; text-decoration: none; font-weight: 600; }
-      p.hint { color: #6b7280; font-size: 12px; margin: 8px 0 0; }
+      p.hint { color: #6b7280; font-size: 12px; margin: 8px 0 0; line-height: 1.4; }
     </style>
   </head>
   <body>
@@ -43,15 +52,23 @@
     <div class="status" id="status">Checking server…</div>
 
     <label for="server">App server URL</label>
-    <input id="server" placeholder="https://your-app.vercel.app" />
+    <input id="server" type="text" placeholder="https://your-app.vercel.app" />
 
     <label for="password">Password</label>
     <input id="password" type="password" placeholder="App password" />
 
+    <div class="row">
+      <input id="autoCapture" type="checkbox" checked />
+      <label for="autoCapture" style="margin: 0; color: #1d2226">Auto-capture native Save</label>
+    </div>
+
     <button id="save">Save settings</button>
 
     <a id="open" href="#" target="_blank">Open my saved posts →</a>
-    <p class="hint">On a LinkedIn feed, click <b>💾 Save</b> on any post.</p>
+    <p class="hint">
+      On LinkedIn, use the built-in <b>Save</b> on any post — it is sent to your app
+      automatically.
+    </p>
     <script src="popup.js"></script>
   </body>
 </html>

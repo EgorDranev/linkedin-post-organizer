@@ -2,6 +2,7 @@ const DEFAULT_SERVER = "http://localhost:3000";
 const statusEl = document.getElementById("status");
 const serverEl = document.getElementById("server");
 const passwordEl = document.getElementById("password");
+const autoCaptureEl = document.getElementById("autoCapture");
 const openEl = document.getElementById("open");
 
 function normalize(url) {
@@ -9,13 +10,15 @@ function normalize(url) {
 }
 
 async function refresh() {
-  const { serverUrl, appPassword } = await chrome.storage.local.get([
+  const { serverUrl, appPassword, autoCapture } = await chrome.storage.local.get([
     "serverUrl",
     "appPassword",
+    "autoCapture",
   ]);
   const server = normalize(serverUrl);
   serverEl.value = serverUrl || "";
   passwordEl.value = appPassword || "";
+  autoCaptureEl.checked = autoCapture !== false;
   openEl.href = server;
 
   statusEl.textContent = "Checking server…";
@@ -45,6 +48,7 @@ document.getElementById("save").addEventListener("click", async () => {
   await chrome.storage.local.set({
     serverUrl: serverEl.value.trim(),
     appPassword: passwordEl.value,
+    autoCapture: autoCaptureEl.checked,
   });
   refresh();
 });
