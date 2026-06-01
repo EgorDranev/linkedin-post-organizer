@@ -6,22 +6,30 @@
 
 const DEFAULT_SERVER = "http://localhost:3000";
 
-async function getServer() {
-  const { serverUrl } = await chrome.storage.local.get("serverUrl");
-  return (serverUrl || DEFAULT_SERVER).replace(/\/$/, "");
+async function getConfig() {
+  const { serverUrl, appPassword } = await chrome.storage.local.get([
+    "serverUrl",
+    "appPassword",
+  ]);
+  return {
+    server: (serverUrl || DEFAULT_SERVER).replace(/\/$/, ""),
+    password: appPassword || "",
+  };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== "save-post") return;
 
-  getServer()
-    .then((server) =>
-      fetch(`${server}/api/posts`, {
+  getConfig()
+    .then(({ server, password }) => {
+      const headers = { "Content-Type": "application/json" };
+      if (password) headers["x-app-password"] = password;
+      return fetch(`${server}/api/posts`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(msg.payload),
-      })
-    )
+      });
+    })
     .then(async (r) => {
       if (!r.ok) throw new Error(`server ${r.status}`);
       const post = await r.json();

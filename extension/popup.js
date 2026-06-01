@@ -1,6 +1,7 @@
 const DEFAULT_SERVER = "http://localhost:3000";
 const statusEl = document.getElementById("status");
-const inputEl = document.getElementById("server");
+const serverEl = document.getElementById("server");
+const passwordEl = document.getElementById("password");
 const openEl = document.getElementById("open");
 
 function normalize(url) {
@@ -8,18 +9,32 @@ function normalize(url) {
 }
 
 async function refresh() {
-  const { serverUrl } = await chrome.storage.local.get("serverUrl");
+  const { serverUrl, appPassword } = await chrome.storage.local.get([
+    "serverUrl",
+    "appPassword",
+  ]);
   const server = normalize(serverUrl);
-  inputEl.value = serverUrl || "";
+  serverEl.value = serverUrl || "";
+  passwordEl.value = appPassword || "";
   openEl.href = server;
 
   statusEl.textContent = "Checking server…";
   statusEl.className = "status";
   try {
-    const r = await fetch(`${server}/api/health`);
+    const headers = appPassword ? { "x-app-password": appPassword } : {};
+    const r = await fetch(`${server}/api/session`, { headers });
     if (!r.ok) throw new Error();
-    statusEl.textContent = "● Server connected";
-    statusEl.className = "status ok";
+    const { gate, authed } = await r.json();
+    if (!gate) {
+      statusEl.textContent = "● Connected (no password set)";
+      statusEl.className = "status ok";
+    } else if (authed) {
+      statusEl.textContent = "● Connected & authorized";
+      statusEl.className = "status ok";
+    } else {
+      statusEl.textContent = "● Connected, wrong password";
+      statusEl.className = "status bad";
+    }
   } catch {
     statusEl.textContent = "● Server not reachable";
     statusEl.className = "status bad";
@@ -27,8 +42,10 @@ async function refresh() {
 }
 
 document.getElementById("save").addEventListener("click", async () => {
-  const value = inputEl.value.trim();
-  await chrome.storage.local.set({ serverUrl: value });
+  await chrome.storage.local.set({
+    serverUrl: serverEl.value.trim(),
+    appPassword: passwordEl.value,
+  });
   refresh();
 });
 

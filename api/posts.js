@@ -1,7 +1,9 @@
 import { ensureSchema, sql, allTags, hydrate, getPost } from "./_lib/db.js";
 import { suggestTags } from "./_lib/tagger.js";
+import { requireAuth } from "./_lib/auth.js";
 
 export default async function handler(req, res) {
+  if (!requireAuth(req, res)) return;
   await ensureSchema();
 
   if (req.method === "GET") {
