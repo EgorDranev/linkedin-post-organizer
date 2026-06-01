@@ -1,0 +1,194 @@
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --ink: #1d2226;
+  --muted: #6b7280;
+  --line: #e3e6ea;
+  --accent: #0a66c2; /* LinkedIn blue */
+  --accent-soft: #e8f0fa;
+  --suggest: #f3eaff;
+  --suggest-ink: #6b3fa0;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 80px;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.topbar h1 { font-size: 22px; margin: 0; }
+.count { color: var(--muted); font-size: 14px; }
+
+.muted { color: var(--muted); }
+.dot { margin: 0 6px; }
+.error { color: #c0392b; font-size: 14px; }
+.empty { padding: 32px 0; text-align: center; }
+
+.section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 28px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.badge {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+/* add form */
+.add-toggle {
+  width: 100%;
+  padding: 14px;
+  border: 1.5px dashed var(--line);
+  background: transparent;
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.add-toggle:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+.add-form {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 8px;
+}
+.add-form textarea,
+.add-form input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+  resize: vertical;
+}
+.add-row { display: flex; gap: 8px; margin-top: 8px; }
+.add-row input { flex: 1; }
+.add-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+button.primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.primary:disabled { opacity: 0.5; cursor: default; }
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+}
+
+/* card */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.meta { font-size: 14px; }
+.card-tools { display: flex; align-items: center; gap: 10px; }
+.link { color: var(--accent); text-decoration: none; font-size: 13px; }
+.link:hover { text-decoration: underline; }
+.more { background: none; border: none; padding: 0; cursor: pointer; }
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+.icon-btn:hover { color: #c0392b; }
+
+.body { white-space: pre-wrap; margin: 4px 0 8px; font-size: 15px; }
+
+/* tags */
+.tags { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.chip.accepted {
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 4px 6px 4px 12px;
+}
+.chip.suggested {
+  background: var(--suggest);
+  color: var(--suggest-ink);
+  border: 1px dashed #d6c2ef;
+  padding: 2px 4px 2px 2px;
+}
+.chip-add {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.chip-x {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+.chip-x:hover { opacity: 1; }
+.chip-form input {
+  border: none;
+  background: #f0f1f3;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 13px;
+  width: 96px;
+}
+.chip-form input:focus { outline: 2px solid var(--accent-soft); }

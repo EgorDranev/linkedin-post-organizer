@@ -1,0 +1,21 @@
+.lis-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 12px 0;
+}
+
+.lis-save-btn {
+  font: 600 13px Inter, -apple-system, sans-serif;
+  color: #0a66c2;
+  background: #e8f0fa;
+  border: 1px solid #cfe0f3;
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.lis-save-btn:hover { background: #d6e6f7; }
+.lis-save-btn[data-state="saved"],
+.lis-save-btn[data-state="dup"] { background: #d8f0e0; color: #0a7d3c; border-color: #b6e3c6; }
+.lis-save-btn[data-state="error"],
+.lis-save-btn[data-state="empty"] { background: #fbe3e0; color: #c0392b; border-color: #f0c4be; }
