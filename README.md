@@ -1,58 +1,64 @@
 # LinkedIn Saver
 
-A private, local **save-and-classify** tool for LinkedIn posts — like Raindrop.io,
-but it **suggests tags** for each post using offline heuristics (no API key, no cloud).
+A **save-and-classify** tool for LinkedIn posts — like Raindrop.io, but it
+**suggests tags** for each post using offline heuristics (no LLM, no API key).
 
-Three parts, one machine:
+Deployed on **Vercel**: a Vite + React frontend, serverless functions in `/api`,
+and **Neon Postgres** for storage.
 
 | Part | What it does | Stack |
 |------|--------------|-------|
-| `server/` | Stores posts, suggests tags | Node + built-in `node:sqlite` + Express |
-| `web/` | Review posts, accept/edit tags | Vite + React |
+| `src/` | Review posts, accept/edit tags | Vite + React |
+| `api/` | Store posts, suggest tags | Vercel serverless functions |
+| `api/_lib/` | DB layer + heuristic tagger | `@neondatabase/serverless` |
 | `extension/` | "💾 Save" button on linkedin.com | Chrome MV3 |
 
-Data lives in `server/data/app.db` (SQLite, git-ignored). Nothing leaves your machine.
-
-## Run it
-
-Two terminals:
+## Deploy
 
 ```bash
-# 1. backend (port 4000)
-cd server && npm install && npm run dev
-
-# 2. web app (port 5173, proxies /api -> 4000)
-cd web && npm install && npm run dev
+npm install
+vercel link            # link to / create the Vercel project
+# Connect a Neon Postgres store in the Vercel dashboard
+#   Storage → Create → Neon  (injects POSTGRES_URL automatically)
+vercel --prod          # deploy
 ```
 
-Open http://localhost:5173. Paste a post to try the **save → suggest → accept** loop
-without the extension.
+The schema is created automatically on first request (idempotent
+`CREATE TABLE IF NOT EXISTS`), so there's no migration step.
 
-## Load the browser extension
+## Local development
 
-1. Make sure the **server is running** (port 4000).
-2. Chrome → `chrome://extensions` → enable **Developer mode**.
-3. **Load unpacked** → select the `extension/` folder.
-4. Go to linkedin.com. Each post gets a **💾 Save** button. Click it — the post is
-   sent to your local app with suggested tags. Review them at http://localhost:5173.
+```bash
+npm install
+vercel env pull        # pull POSTGRES_URL / DATABASE_URL into .env
+vercel dev             # frontend + /api functions on http://localhost:3000
+```
 
-> The content script reads LinkedIn's DOM, whose class names change often. If the
-> Save button stops capturing text, update the selectors in
-> [`extension/content.js`](extension/content.js).
+Open http://localhost:3000 and paste a post to try the **save → suggest → accept**
+loop. `vercel dev` runs the same serverless functions you deploy.
+
+## Browser extension
+
+1. Chrome → `chrome://extensions` → enable **Developer mode** → **Load unpacked** → `extension/`.
+2. Click the extension icon, set **App server URL** to your Vercel URL (or
+   `http://localhost:3000` for local dev), and Save.
+3. On linkedin.com, each post gets a **💾 Save** button.
+
+> The content script reads LinkedIn's DOM, whose class names change often. If
+> capture breaks, update the selectors in [`extension/content.js`](extension/content.js).
 
 ## How tag suggestion works
 
-Pure local heuristics in [`server/src/tagger.js`](server/src/tagger.js), ranked:
+Pure local heuristics in [`api/_lib/tagger.js`](api/_lib/tagger.js), ranked:
 
 1. **Hashtags** in the post (strongest).
 2. **Existing tags** you've used before that also appear in the post (reuses your taxonomy).
 3. **Frequent two-word phrases** (bigrams).
 4. **Frequent keywords**, boosted when Capitalized in the source.
 
-The more you tag, the better step 2 gets — suggestions converge on *your* vocabulary.
 Swapping in an LLM later is a one-function change (`suggestTags`).
 
 ## Scope (v1)
 
 Built: save a post → see suggested tags → accept / reject / add. Manual paste + extension capture.
-Deferred (data model already supports them): browse/filter by tag, tag management, collections.
+Deferred (schema already supports them): browse/filter by tag, tag management, collections.

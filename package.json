@@ -1,14 +1,15 @@
 {
-  "name": "linkedin-saver-web",
-  "version": "0.1.0",
+  "name": "linkedin-saver",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vercel dev",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

@@ -3,9 +3,10 @@
   "name": "LinkedIn Saver",
   "version": "0.1.0",
   "description": "Save LinkedIn posts to your local LinkedIn Saver app and get suggested tags.",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
-    "http://localhost:4000/*",
+    "http://localhost:3000/*",
+    "https://*.vercel.app/*",
     "https://www.linkedin.com/*"
   ],
   "background": {
