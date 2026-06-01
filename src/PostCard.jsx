@@ -3,7 +3,7 @@ import { api } from "./api.js";
 
 const PREVIEW_LEN = 320;
 
-export function PostCard({ post, onUpdated, onDeleted }) {
+export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -70,8 +70,17 @@ export function PostCard({ post, onUpdated, onDeleted }) {
 
       <div className="tags">
         {post.tags.map((t) => (
-          <span key={t} className="chip accepted">
-            {t}
+          <span
+            key={t}
+            className={`chip accepted${activeTags.includes(t) ? " filtering" : ""}`}
+          >
+            <button
+              className="chip-label"
+              onClick={() => onTagClick?.(t)}
+              title="Filter by this tag"
+            >
+              {t}
+            </button>
             <button className="chip-x" onClick={() => removeTag(t)} title="Remove">
               ×
             </button>
