@@ -13,6 +13,12 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
+.lis-toast--info {
+  border-color: #cfe0f3;
+  background: #f4f9ff;
+  color: #0a66c2;
+}
+
 .lis-toast--error {
   border-color: #f0c4be;
   background: #fdf3f1;

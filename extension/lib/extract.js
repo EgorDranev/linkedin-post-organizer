@@ -3,8 +3,12 @@
 (function () {
   const LIS = (globalThis.LIS = globalThis.LIS || {});
 
-  const POST_SELECTOR =
-    'div.feed-shared-update-v2[data-urn], div[data-urn^="urn:li:activity"]';
+  const POST_SELECTOR = [
+    "div.feed-shared-update-v2[data-urn]",
+    "[data-urn^='urn:li:activity']",
+    "[data-urn*='urn:li:activity:']",
+    "[data-id^='urn:li:activity']",
+  ].join(", ");
 
   const PLACEHOLDER = "[LinkedIn post — no text extracted]";
 
@@ -18,9 +22,7 @@
 
   LIS.findPostFrom = function findPostFrom(el) {
     if (!el?.closest) return null;
-    return el.closest(
-      "div.feed-shared-update-v2[data-urn], [data-urn^='urn:li:activity']"
-    );
+    return el.closest(POST_SELECTOR);
   };
 
   LIS.getPostUrn = function getPostUrn(postEl) {
