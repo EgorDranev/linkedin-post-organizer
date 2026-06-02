@@ -593,13 +593,202 @@
   function extractSocialCounts(postEl) {
     const counts = {};
     const text = clean(postEl);
+    
+    // Extract likes/reactions using multiple methods
     const reactions = text.match(/([\d,.]+[KkMm]?)\s+(?:reaction|like)/);
-    const comments = text.match(/([\d,.]+[KkMm]?)\s+comment/);
-    const reposts = text.match(/([\d,.]+[KkMm]?)\s+(?:repost|share)/);
     if (reactions) counts.reactions = reactions[1];
+    
+    // Look for like counts in elements
+    const likeElements = postEl.querySelectorAll('.social-details-social-counts__item, .social-counts, .react-button__reactors-count, [data-test-id*="like-count"]');
+    for (const element of likeElements) {
+      const likeText = clean(element);
+      const likeMatch = likeText.match(/([\d,.]+[KkMm]?)/);
+      if (likeMatch) {
+        counts.reactions = likeMatch[1];
+        break;
+      }
+    }
+    
+    // Extract comments
+    const comments = text.match(/([\d,.]+[KkMm]?)\s+comment/);
     if (comments) counts.comments = comments[1];
+    
+    // Look for comment counts in elements
+    const commentElements = postEl.querySelectorAll('.comments-button, .social-details-social-counts__comments, [data-test-id*="comment-count"]');
+    for (const element of commentElements) {
+      const commentText = clean(element);
+      const commentMatch = commentText.match(/([\d,.]+[KkMm]?)/);
+      if (commentMatch) {
+        counts.comments = commentMatch[1];
+        break;
+      }
+    }
+    
+    // Extract reposts/shares
+    const reposts = text.match(/([\d,.]+[KkMm]?)\s+(?:repost|share)/);
     if (reposts) counts.reposts = reposts[1];
+    
+    // Look for share counts in elements
+    const shareElements = postEl.querySelectorAll('.social-details-social-counts__reshares, [data-test-id*="repost-count"]');
+    for (const element of shareElements) {
+      const shareText = clean(element);
+      const shareMatch = shareText.match(/([\d,.]+[KkMm]?)/);
+      if (shareMatch) {
+        counts.reposts = shareMatch[1];
+        break;
+      }
+    }
+    
     return counts;
+  }
+
+  function extractHashtagsAndMentions(text) {
+    const hashtags = text.match(/#[a-zA-Z0-9_]+/g) || [];
+    const mentions = text.match(/@[a-zA-Z0-9_]+/g) || [];
+    return {
+      hashtags: [...new Set(hashtags)].map(tag => tag.toLowerCase()), // Remove duplicates
+      mentions: [...new Set(mentions)].map(mention => mention.toLowerCase()) // Remove duplicates
+    };
+  }
+
+  function extractPostType(postEl) {
+    // Check for various post types based on elements present
+    if (postEl.querySelector('video, .feed-shared-linkedin-video')) {
+      return 'video';
+    } else if (postEl.querySelector('img, .feed-shared-image')) {
+      if (postEl.querySelector('.feed-shared-article')) {
+        return 'image_with_article';
+      }
+      return 'image';
+    } else if (postEl.querySelector('.feed-shared-article, .update-components-article')) {
+      return 'article';
+    } else if (postEl.querySelector('.feed-shared-external-video, .update-components-external-video')) {
+      return 'external_video';
+    } else if (postEl.querySelector('.update-components-document')) {
+      return 'document';
+    } else if (extractMedia(postEl).length > 0) {
+      return 'media';
+    } else {
+      return 'text';
+    }
+  }
+
+  function extractPublishedDate(postEl) {
+    // Try to find time element with datetime attribute
+    const timeEl = postEl.querySelector('time');
+    if (timeEl) {
+      const dateTime = timeEl.getAttribute('datetime');
+      if (dateTime) {
+        return new Date(dateTime).toISOString();
+      }
+      
+      // If no datetime attribute, try to parse the text content
+      const timeText = clean(timeEl);
+      if (timeText) {
+        // Attempt to parse common LinkedIn time formats
+        const date = parseLinkedInTime(timeText);
+        if (date) {
+          return date.toISOString();
+        }
+      }
+    }
+    
+    // Look for published text in other common locations
+    const pubSelectors = [
+      '.update-components-actor__sub-description',
+      '.feed-shared-actor__sub-description',
+      '.update-components-actor__sub-description span[aria-hidden="true"]'
+    ];
+    
+    for (const selector of pubSelectors) {
+      const pubEl = postEl.querySelector(selector);
+      if (pubEl) {
+        const pubText = clean(pubEl);
+        if (pubText) {
+          const date = parseLinkedInTime(pubText);
+          if (date) {
+            return date.toISOString();
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  function parseLinkedInTime(timeText) {
+    // Handle relative times like "2mo ago", "3d ago", etc.
+    const relativeTimeRegex = /(\d+)\s*(sec|min|h|d|w|mo|yr)\s*ago/;
+    const relativeMatch = timeText.match(relativeTimeRegex);
+    
+    if (relativeMatch) {
+      const [, amount, unit] = relativeMatch;
+      const num = parseInt(amount, 10);
+      const now = new Date();
+      
+      switch(unit) {
+        case 'sec':
+          now.setSeconds(now.getSeconds() - num);
+          break;
+        case 'min':
+          now.setMinutes(now.getMinutes() - num);
+          break;
+        case 'h':
+          now.setHours(now.getHours() - num);
+          break;
+        case 'd':
+          now.setDate(now.getDate() - num);
+          break;
+        case 'w':
+          now.setDate(now.getDate() - (num * 7));
+          break;
+        case 'mo':
+          now.setMonth(now.getMonth() - num);
+          break;
+        case 'yr':
+          now.setFullYear(now.getFullYear() - num);
+          break;
+      }
+      
+      return now;
+    }
+    
+    // Handle absolute dates like "Jan 15, 2023"
+    const absoluteTimeRegex = /[A-Za-z]{3}\s+\d{1,2},\s+\d{4}/;
+    const absoluteMatch = timeText.match(absoluteTimeRegex);
+    
+    if (absoluteMatch) {
+      return new Date(absoluteMatch[0]);
+    }
+    
+    // Handle other formats as needed
+    return null;
+  }
+
+  function extractCompanyInfo(postEl) {
+    // Look for company/organization information in the author section
+    const companySelectors = [
+      '.update-components-actor__description',
+      '.feed-shared-actor__description',
+      '.entity-result__secondary-subtitle',
+      '.update-components-actor__sub-description'
+    ];
+    
+    for (const selector of companySelectors) {
+      const companyEl = postEl.querySelector(selector);
+      if (companyEl) {
+        const text = clean(companyEl);
+        // Skip if it's a date/time string (likely publication info instead of company)
+        if (!/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(text)) {
+          // Extract company name if it follows typical patterns
+          if (text && !/^\d+[a-z]*\s+(?:mo|d|yr)\s+ago$/i.test(text)) {
+            return text;
+          }
+        }
+      }
+    }
+    
+    return null;
   }
 
   function extractMedia(postEl) {
@@ -899,14 +1088,26 @@
       text = bits.length ? `${PLACEHOLDER}\n${bits.join(" · ")}` : PLACEHOLDER;
     }
 
+    // Extract new metadata fields
+    const publishedDate = extractPublishedDate(postEl);
+    const hashtagsAndMentions = extractHashtagsAndMentions(text);
+    const postType = extractPostType(postEl);
+    const companyInfo = extractCompanyInfo(postEl);
+    const socialCounts = extractSocialCounts(postEl);
+
     const metadata = compactObject({
       urn,
       authorProfileUrl,
       publishedText,
+      publishedDate,
       links,
       capturedAt: new Date().toISOString(),
       capturedFrom: location.href,
-      socialCounts: extractSocialCounts(postEl),
+      socialCounts,
+      postType,
+      companyInfo,
+      hashtags: hashtagsAndMentions.hashtags,
+      mentions: hashtagsAndMentions.mentions,
     });
 
     return { url, author, authorHeadline, text, urn, metadata, media };

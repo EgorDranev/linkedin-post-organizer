@@ -68,16 +68,6 @@ function deriveAuthor(post) {
   return "";
 }
 
-function metadataBits(post) {
-  const meta = post.metadata || {};
-  return [
-    meta.publishedText,
-    meta.authorProfileUrl ? hostFromUrl(meta.authorProfileUrl) : "",
-    meta.socialCounts?.reactions ? `${meta.socialCounts.reactions} reactions` : "",
-    meta.socialCounts?.comments ? `${meta.socialCounts.comments} comments` : "",
-  ].filter(Boolean);
-}
-
 function metadataLinks(post) {
   const links = post.metadata?.links;
   return Array.isArray(links)
@@ -153,6 +143,80 @@ function primaryPreviewMedia(media) {
   );
 }
 
+// Inline icon set (no icon-library dependency). Shared stroke/weight keeps the
+// glyphs visually consistent — sized 16px in action buttons, 14px in stats.
+const ICON_BASE = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+};
+
+const ExternalIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+  </svg>
+);
+
+const ExpandIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="M15 3h6v6" />
+    <path d="M9 21H3v-6" />
+    <path d="m21 3-7 7" />
+    <path d="m3 21 7-7" />
+  </svg>
+);
+
+const TrashIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="M3 6h18" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M10 11v6" />
+    <path d="M14 11v6" />
+  </svg>
+);
+
+const UserIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
+const HeartIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z" />
+  </svg>
+);
+
+const CommentIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+  </svg>
+);
+
+const RepostIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="m17 2 4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+    <path d="m7 22-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+  </svg>
+);
+
+const ClockIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 6v6l4 2" />
+  </svg>
+);
+
 export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
   const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -161,21 +225,30 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const displayBlocks = useMemo(() => textBlocks(displayText), [displayText]);
   const readerBlocks = useMemo(() => textBlocks(post.text), [post.text]);
   const media = Array.isArray(post.media) ? post.media : [];
-  const bits = metadataBits(post);
   const links = metadataLinks(post);
   const readableMedia = media.filter((item) => item.thumbnailUrl || item.url);
   const primaryMedia = primaryPreviewMedia(media);
   const primaryThumb =
     primaryMedia?.thumbnailUrl ||
     (primaryMedia?.type === "image" ? primaryMedia?.url : "");
+  const hasMedia = Boolean(primaryThumb);
   const author = deriveAuthor(post);
   const title = previewTitle(displayBlocks, media, post);
   const excerpt = previewExcerpt(displayBlocks, title) || displayText;
   const source = hostFromUrl(post.url) || hostFromUrl(links[0]?.url) || "LinkedIn";
+  const monogram = (author || source || "L").trim().charAt(0).toUpperCase();
   const savedDate = new Date(post.savedAt).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
+
+  // Engagement + provenance surfaced as compact stats (full detail lives in
+  // the reader). Counts are only shown when present.
+  const social = post.metadata?.socialCounts || {};
+  const reactions = social.reactions;
+  const comments = social.comments;
+  const reposts = social.reposts;
+  const publishedText = post.metadata?.publishedText || "";
 
   useEffect(() => {
     if (!readerOpen) return undefined;
@@ -213,78 +286,104 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     acceptTag(tag);
   };
 
+  // Same three actions on every card; placement differs (overlaid on the media
+  // hero vs inline in the header of a text-only card).
+  const renderActions = (variant) => (
+    <div className={`card-actions card-actions--${variant}`}>
+      {post.url && (
+        <a
+          href={post.url}
+          target="_blank"
+          rel="noreferrer"
+          className="card-btn"
+          title="Open original"
+          aria-label="Open original post"
+        >
+          <ExternalIcon />
+        </a>
+      )}
+      <button
+        className="card-btn"
+        title="Read full capture"
+        aria-label="Read full capture"
+        onClick={() => setReaderOpen(true)}
+      >
+        <ExpandIcon />
+      </button>
+      <button
+        className="card-btn card-btn--danger"
+        title="Delete saved post"
+        aria-label="Delete saved post"
+        onClick={() => api.deletePost(post.id).then(() => onDeleted(post.id))}
+      >
+        <TrashIcon />
+      </button>
+    </div>
+  );
+
   return (
-    <article className="card">
-      <div className="card-preview">
-        {primaryThumb ? (
+    <article className={`card ${hasMedia ? "has-media" : "is-text"}`}>
+      {hasMedia && (
+        <div className="card-preview">
           <img
             src={primaryThumb}
             alt={primaryMedia?.alt || mediaLabel(primaryMedia)}
             loading="lazy"
             referrerPolicy="no-referrer"
           />
-        ) : (
-          <div className="card-preview-empty">{author?.slice(0, 1) || "L"}</div>
-        )}
-
-        <div className="card-preview-fade" />
-        <div className="card-select" aria-hidden="true" />
-        <div className="card-actions">
-          {post.url && (
-            <a
-              href={post.url}
-              target="_blank"
-              rel="noreferrer"
-              className="preview-btn"
-              title="Open original"
-            >
-              ↗
-            </a>
-          )}
-          <button
-            className="preview-btn"
-            title="Read full capture"
-            onClick={() => setReaderOpen(true)}
-          >
-            ◉
-          </button>
-          <button
-            className="preview-btn preview-btn--text"
-            title="Read full capture"
-            onClick={() => setReaderOpen(true)}
-          >
-            Edit
-          </button>
-          <button
-            className="preview-btn"
-            title="Delete"
-            onClick={() => api.deletePost(post.id).then(() => onDeleted(post.id))}
-          >
-            ⌫
-          </button>
+          <div className="card-preview-fade" />
+          {renderActions("overlay")}
         </div>
-      </div>
+      )}
 
       <div className="card-content">
-        <h3 className="preview-title">{title}</h3>
-        <p className="preview-excerpt">{excerpt}</p>
-
-        <div className="preview-meta">
-          <span className="preview-type" aria-hidden="true">▣</span>
-          <span className="preview-author">{author || "Unknown"}</span>
-          <span>•</span>
-          <span>{source}</span>
-          <span>•</span>
-          <span>{savedDate}</span>
+        <div className="card-head">
+          {!hasMedia && (
+            <span className="card-monogram" aria-hidden="true">
+              {monogram}
+            </span>
+          )}
+          <span className="card-source">
+            <span className="card-source-name">{source}</span>
+            <span className="meta-sep" aria-hidden="true">·</span>
+            <span>{savedDate}</span>
+          </span>
+          {!hasMedia && renderActions("inline")}
         </div>
 
-        {bits.length > 0 && (
-          <div className="capture-meta">
-            {bits.map((bit) => (
-              <span key={bit}>{bit}</span>
-            ))}
-          </div>
-        )}
+        <h3 className="card-title">{title}</h3>
+        {excerpt && <p className="card-excerpt">{excerpt}</p>}
+
+        <div className="card-stats">
+          <span className="card-stat card-author" title={author || "Unknown author"}>
+            <UserIcon width={14} height={14} />
+            {author || "Unknown"}
+          </span>
+          {reactions ? (
+            <span className="card-stat" title={`${reactions} reactions`}>
+              <HeartIcon width={14} height={14} />
+              {reactions}
+            </span>
+          ) : null}
+          {comments ? (
+            <span className="card-stat" title={`${comments} comments`}>
+              <CommentIcon width={14} height={14} />
+              {comments}
+            </span>
+          ) : null}
+          {reposts ? (
+            <span className="card-stat" title={`${reposts} reposts`}>
+              <RepostIcon width={14} height={14} />
+              {reposts}
+            </span>
+          ) : null}
+          {publishedText ? (
+            <span className="card-stat" title={`Published ${publishedText}`}>
+              <ClockIcon width={14} height={14} />
+              {publishedText}
+            </span>
+          ) : null}
+        </div>
 
         <div className="tags">
           {post.tags.map((t) => (
@@ -356,6 +455,49 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
             <div className="reader-grid">
               <section className="reader-panel">
                 <h2>Captured text</h2>
+                
+                {/* Display expanded metadata */}
+                <div className="reader-meta">
+                  {post.metadata?.publishedDate && (
+                    <div className="meta-item">
+                      <strong>Published:</strong> {new Date(post.metadata.publishedDate).toLocaleString()}
+                    </div>
+                  )}
+                  
+                  {post.metadata?.companyInfo && (
+                    <div className="meta-item">
+                      <strong>Company:</strong> {post.metadata.companyInfo}
+                    </div>
+                  )}
+                  
+                  {post.metadata?.postType && (
+                    <div className="meta-item">
+                      <strong>Type:</strong> {post.metadata.postType}
+                    </div>
+                  )}
+                  
+                  {post.metadata?.hashtags && post.metadata.hashtags.length > 0 && (
+                    <div className="meta-item">
+                      <strong>Hashtags:</strong> {post.metadata.hashtags.join(', ')}
+                    </div>
+                  )}
+                  
+                  {post.metadata?.mentions && post.metadata.mentions.length > 0 && (
+                    <div className="meta-item">
+                      <strong>Mentions:</strong> {post.metadata.mentions.join(', ')}
+                    </div>
+                  )}
+                  
+                  {post.metadata?.socialCounts && (
+                    <div className="meta-item">
+                      <strong>Engagement:</strong>
+                      {post.metadata.socialCounts.reactions && ` ${post.metadata.socialCounts.reactions} likes`}
+                      {post.metadata.socialCounts.comments && ` ${post.metadata.socialCounts.comments} comments`}
+                      {post.metadata.socialCounts.reposts && ` ${post.metadata.socialCounts.reposts} reposts`}
+                    </div>
+                  )}
+                </div>
+                
                 <div className="reader-text">
                   {readerBlocks.map((block, index) => (
                     <p
