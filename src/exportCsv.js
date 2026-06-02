@@ -12,7 +12,11 @@ const CSV_COLUMNS = [
 ];
 
 function csvCell(value) {
-  const text = value == null ? "" : String(value);
+  let text = value == null ? "" : String(value);
+  // Neutralize spreadsheet formula injection: a cell starting with = + - @
+  // (or tab/CR) is evaluated as a formula by Excel/Sheets. Post content is
+  // attacker-controlled, so prefix a single quote to force it to plain text.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return `"${text.replace(/"/g, '""')}"`;
 }
 
