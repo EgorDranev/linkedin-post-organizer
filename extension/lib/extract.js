@@ -340,11 +340,24 @@
   }
 
   function imageUrl(img) {
+    const srcset = attr(img, "srcset") || attr(img, "data-srcset");
+    const candidates = srcset
+      .split(",")
+      .map((part) => {
+        const [url, size = ""] = part.trim().split(/\s+/);
+        const width = Number(size.match(/(\d+)w/)?.[1] || 0);
+        const scale = Number(size.match(/(\d+(?:\.\d+)?)x/)?.[1] || 0) * 1000;
+        return { url, score: width || scale || 0 };
+      })
+      .filter((item) => item.url)
+      .sort((a, b) => b.score - a.score);
+
     return absoluteUrl(
-      img?.currentSrc ||
-        attr(img, "src") ||
+      candidates[0]?.url ||
         attr(img, "data-delayed-url") ||
-        attr(img, "data-src")
+        attr(img, "data-src") ||
+        img?.currentSrc ||
+        attr(img, "src")
     );
   }
 

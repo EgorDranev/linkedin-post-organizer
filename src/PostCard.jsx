@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
 
-const PREVIEW_LEN = 320;
+const PREVIEW_LEN = 520;
 
 function hostFromUrl(url) {
   if (!url) return "";
@@ -36,15 +36,50 @@ function metadataLinks(post) {
     : [];
 }
 
+function readableText(text) {
+  const clean = String(text || "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .trim();
+
+  const lineCount = clean.split("\n").filter(Boolean).length;
+  if (lineCount > 3 || clean.length < 700) return clean;
+
+  return clean
+    .replace(/\s+(https?:\/\/\S+)/g, "\n\n$1")
+    .replace(/\s+(?=(?:Table of Contents|WHEREAS|NOW, THEREFORE)\b)/g, "\n\n")
+    .replace(/\s+(?=\d{1,2}\s+[A-Z][A-Za-z][^.\n]{8,80}(?:\s+\d{1,2}\b|$))/g, "\n\n");
+}
+
+function textBlocks(text) {
+  return readableText(text)
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+}
+
 export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
-  const [expanded, setExpanded] = useState(false);
+  const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
 
-  const long = post.text.length > PREVIEW_LEN;
-  const shown = expanded || !long ? post.text : post.text.slice(0, PREVIEW_LEN) + "…";
+  const displayText = useMemo(() => readableText(post.text), [post.text]);
+  const long = displayText.length > PREVIEW_LEN;
+  const shown = long ? displayText.slice(0, PREVIEW_LEN) + "..." : displayText;
+  const previewBlocks = useMemo(() => textBlocks(shown).slice(0, 2), [shown]);
+  const readerBlocks = useMemo(() => textBlocks(post.text), [post.text]);
   const media = Array.isArray(post.media) ? post.media : [];
   const bits = metadataBits(post);
   const links = metadataLinks(post);
+  const readableMedia = media.filter((item) => item.thumbnailUrl || item.url);
+
+  useEffect(() => {
+    if (!readerOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setReaderOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [readerOpen]);
 
   // suggested tags not already accepted
   const pending = post.suggested.filter((s) => !post.tags.includes(s.tag));
@@ -97,10 +132,14 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
         </div>
       </div>
 
-      <p className="body">{shown}</p>
-      {long && (
-        <button className="link more" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? "show less" : "show more"}
+      <div className="body">
+        {previewBlocks.map((block, index) => (
+          <p key={`${block.slice(0, 24)}-${index}`}>{block}</p>
+        ))}
+      </div>
+      {(long || readableMedia.length > 0) && (
+        <button className="reader-trigger" onClick={() => setReaderOpen(true)}>
+          {long ? "Read full capture" : "View media"}
         </button>
       )}
 
@@ -203,6 +242,77 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           />
         </form>
       </div>
+
+      {readerOpen && (
+        <div
+          className="reader-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Captured post reader"
+          onMouseDown={() => setReaderOpen(false)}
+        >
+          <div className="reader-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="reader-head">
+              <div>
+                <strong>{post.author || "Unknown author"}</strong>
+                {post.authorHeadline && <span>{post.authorHeadline}</span>}
+              </div>
+              <button
+                className="icon-btn reader-close"
+                title="Close"
+                onClick={() => setReaderOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="reader-grid">
+              <section className="reader-panel">
+                <h2>Captured text</h2>
+                <div className="reader-text">
+                  {readerBlocks.map((block, index) => (
+                    <p key={`${block.slice(0, 32)}-${index}`}>{block}</p>
+                  ))}
+                </div>
+              </section>
+
+              {readableMedia.length > 0 && (
+                <section className="reader-panel reader-panel--media">
+                  <h2>Captured images</h2>
+                  <div className="reader-media">
+                    {readableMedia.map((item, index) => {
+                      const href = item.url || item.thumbnailUrl;
+                      const thumb =
+                        item.thumbnailUrl || (item.type === "image" ? item.url : "");
+                      const label = mediaLabel(item);
+                      return (
+                        <a
+                          key={`${href || label}-${index}`}
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={label}
+                        >
+                          {thumb ? (
+                            <img
+                              src={thumb}
+                              alt={item.alt || label}
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <span>{label}</span>
+                          )}
+                        </a>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
