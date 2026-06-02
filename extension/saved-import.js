@@ -37,6 +37,30 @@
     }));
   }
 
+  function hasExtractedText(payload) {
+    return Boolean(
+      payload?.text &&
+        payload.text.trim() &&
+        !/^\[LinkedIn post .+ no text extracted\]/i.test(payload.text.trim())
+    );
+  }
+
+  function scrapePostUrl(url) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ type: "scrape-post-url", url }, (resp) => {
+          if (chrome.runtime.lastError || !resp?.ok || !resp.payload) {
+            resolve(null);
+            return;
+          }
+          resolve(resp.payload);
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
   async function importVisibleNewItems(existing, seen, stats) {
     for (const item of visibleSavedItems()) {
       if (!item.url || seen.has(item.url)) continue;
@@ -47,7 +71,24 @@
         continue;
       }
 
-      const payload = LIS.extractSavedItem(item);
+      const shallowPayload = LIS.extractSavedItem(item);
+      const scrapedPayload = await scrapePostUrl(item.url);
+      const payload = hasExtractedText(scrapedPayload) || scrapedPayload?.author
+        ? {
+            ...shallowPayload,
+            ...scrapedPayload,
+            metadata: {
+              ...(shallowPayload.metadata || {}),
+              ...(scrapedPayload.metadata || {}),
+              importedFromSavedPosts: true,
+              scrapedFromPostPage: true,
+            },
+            media:
+              Array.isArray(scrapedPayload.media) && scrapedPayload.media.length
+                ? scrapedPayload.media
+                : shallowPayload.media,
+          }
+        : shallowPayload;
       if (!payload.url || !payload.text) {
         stats.failed += 1;
         continue;

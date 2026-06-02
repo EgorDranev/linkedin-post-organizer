@@ -492,6 +492,21 @@
     return links;
   }
 
+  function fallbackTextFromAttachments(media, links) {
+    const lines = [];
+    for (const item of media || []) {
+      if (item.title) lines.push(item.title);
+      if (item.description) lines.push(item.description);
+      if (!item.title && item.alt && !/^(image|video)$/i.test(item.alt)) {
+        lines.push(item.alt);
+      }
+    }
+    for (const item of links || []) {
+      if (item.text && !/^linkedin\.com$/i.test(item.text)) lines.push(item.text);
+    }
+    return uniqueTexts(lines).join("\n").trim();
+  }
+
   function extractSocialCounts(postEl) {
     const counts = {};
     const text = clean(postEl);
@@ -726,11 +741,18 @@
         ".update-components-actor__description",
         ".feed-shared-actor__description",
       ]) || null;
-    const text = extractPostText(card) || cleanSavedText(card) || PLACEHOLDER;
+    const media = extractMedia(card);
+    const links = extractLinks(card, url);
+    const text =
+      extractPostText(card) ||
+      cleanSavedText(card) ||
+      fallbackTextFromAttachments(media, links) ||
+      PLACEHOLDER;
     const metadata = compactObject({
       urn,
       authorProfileUrl:
         firstHref(card, ["a[href*='/in/']", "a[href*='/company/']"]) || null,
+      links,
       capturedAt: new Date().toISOString(),
       capturedFrom: location.href,
       importedFromSavedPosts: true,
@@ -742,7 +764,7 @@
       authorHeadline,
       text,
       metadata,
-      media: extractMedia(card),
+      media,
     };
   };
 
@@ -780,22 +802,28 @@
       ]) ||
       "";
 
+    const postUrl = url || location.href;
+    const media = extractMedia(postEl);
+    const links = extractLinks(postEl, postUrl);
+
+    if (!text) {
+      text = fallbackTextFromAttachments(media, links);
+    }
+
     if (!text) {
       const bits = [author, authorHeadline].filter(Boolean);
       text = bits.length ? `${PLACEHOLDER}\n${bits.join(" · ")}` : PLACEHOLDER;
     }
 
-    const postUrl = url || location.href;
     const metadata = compactObject({
       urn,
       authorProfileUrl,
       publishedText,
-      links: extractLinks(postEl, postUrl),
+      links,
       capturedAt: new Date().toISOString(),
       capturedFrom: location.href,
       socialCounts: extractSocialCounts(postEl),
     });
-    const media = extractMedia(postEl);
 
     return { url, author, authorHeadline, text, urn, metadata, media };
   };
