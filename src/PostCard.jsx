@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
 
 const PREVIEW_LEN = 520;
+const DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/gi;
+const SECTION_START_RE =
+  /(?:^|\s)(\d{1,2})\.\s+([A-Z][^?!.]{8,140}\?)(?=\s+[A-Z0-9]|$)/g;
 
 function hostFromUrl(url) {
   if (!url) return "";
@@ -37,9 +40,20 @@ function metadataLinks(post) {
 }
 
 function readableText(text) {
-  const clean = String(text || "")
+  let clean = String(text || "")
     .replace(/[ \t]+/g, " ")
     .replace(/\n[ \t]+/g, "\n")
+    .replace(/\bView image\b\s*/gi, "")
+    .trim();
+
+  clean = clean
+    .replace(/\s+(?=\d{1,2}\.\s+[A-Z])/g, "\n\n")
+    .replace(DOMAIN_RE, (match) => `\n\n${match}\n\n`)
+    .replace(SECTION_START_RE, (_match, number, title) => `\n\n${number}. ${title}\n\n`)
+    .replace(/\s+(?=(?:I am |I have |I’m |I'm |My |This |An agreement |For your |Over the ))/g, "\n\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 
   const lineCount = clean.split("\n").filter(Boolean).length;
@@ -51,11 +65,22 @@ function readableText(text) {
     .replace(/\s+(?=\d{1,2}\s+[A-Z][A-Za-z][^.\n]{8,80}(?:\s+\d{1,2}\b|$))/g, "\n\n");
 }
 
+function classifyBlock(block, index) {
+  const text = block.trim();
+  if (/^\d{1,2}\.\s+.{4,160}\??$/.test(text)) return "question";
+  if (/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/i.test(text) && text.length < 80) {
+    return "source";
+  }
+  if (index === 0 && text.length < 120 && !/[.!?]$/.test(text)) return "title";
+  return "paragraph";
+}
+
 function textBlocks(text) {
   return readableText(text)
     .split(/\n{2,}/)
     .map((block) => block.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((text, index) => ({ text, kind: classifyBlock(text, index) }));
 }
 
 export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
@@ -134,7 +159,12 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
 
       <div className="body">
         {previewBlocks.map((block, index) => (
-          <p key={`${block.slice(0, 24)}-${index}`}>{block}</p>
+          <p
+            key={`${block.text.slice(0, 24)}-${index}`}
+            className={`text-block text-block--${block.kind}`}
+          >
+            {block.text}
+          </p>
         ))}
       </div>
       {(long || readableMedia.length > 0) && (
@@ -271,7 +301,12 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 <h2>Captured text</h2>
                 <div className="reader-text">
                   {readerBlocks.map((block, index) => (
-                    <p key={`${block.slice(0, 32)}-${index}`}>{block}</p>
+                    <p
+                      key={`${block.text.slice(0, 32)}-${index}`}
+                      className={`text-block text-block--${block.kind}`}
+                    >
+                      {block.text}
+                    </p>
                   ))}
                 </div>
               </section>

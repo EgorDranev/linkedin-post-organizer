@@ -236,6 +236,19 @@ button.ghost {
 .body p:last-child {
   margin-bottom: 0;
 }
+.text-block--title {
+  color: var(--ink);
+  font-weight: 700;
+}
+.text-block--source {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.text-block--question {
+  margin-top: 16px;
+  font-weight: 700;
+}
 .reader-trigger {
   border: 1px solid var(--accent);
   border-radius: 8px;
@@ -405,6 +418,27 @@ button.ghost {
 }
 .reader-text p:last-child {
   margin-bottom: 0;
+}
+.reader-text .text-block--title {
+  font-size: 22px;
+  line-height: 1.3;
+}
+.reader-text .text-block--source {
+  display: inline-block;
+  margin-bottom: 8px;
+  border: 1px solid #bfd5ea;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  padding: 4px 10px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.reader-text .text-block--question {
+  margin: 24px 0 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  font-size: 18px;
+  line-height: 1.35;
 }
 .reader-media {
   display: grid;
