@@ -69,7 +69,9 @@ export default async function handler(req, res) {
     }
 
     const tags = await allTags();
-    const suggestions = JSON.stringify(suggestTags(text, tags));
+    const suggestions = JSON.stringify(
+      suggestTags(text, { existingTags: tags, author })
+    );
 
     const existing = postUrl
       ? await sql`SELECT id FROM posts WHERE url = ${postUrl}`

@@ -76,10 +76,18 @@ Keep that terminal open. After you change any file under `extension/`, the watch
 
 Pure local heuristics in [`api/_lib/tagger.js`](api/_lib/tagger.js), ranked:
 
-1. **Hashtags** in the post (strongest).
-2. **Existing tags** you've used before that also appear in the post (reuses your taxonomy).
-3. **Frequent two-word phrases** (bigrams).
-4. **Frequent keywords**, boosted when Capitalized in the source.
+1. **Author** as one canonical `author: name` label.
+2. **Hashtags** in the post (strongest topic signal).
+3. **Existing tags** you've used before that also appear in the post (reuses your taxonomy).
+4. **Frequent phrases / keywords**, capped tightly and filtered for URL/domain/name noise.
+
+Suggested taxonomy:
+
+- `author`: who wrote the post.
+- `topic`: what the post is about.
+- `format`: post, article, video, carousel, link, event.
+- `source`: LinkedIn, newsletter, company site, publication.
+- `intent`: inspiration, reference, lead, follow-up, idea, read later.
 
 Swapping in an LLM later is a one-function change (`suggestTags`).
 

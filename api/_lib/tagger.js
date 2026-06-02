@@ -1,24 +1,32 @@
 // Local, offline tag suggestion. No API calls.
 //
 // Strategy (in priority order):
-//   1. Hashtags in the post           -> strongest signal, used verbatim.
-//   2. Existing vocabulary matches     -> reuse tags you've used before.
-//   3. Salient phrases (bigrams)       -> frequent two-word noun-ish phrases.
-//   4. Salient keywords (unigrams)     -> frequent meaningful single words,
-//                                         boosted if they appear Capitalized.
+//   1. Author label                    -> one canonical "author: name" tag.
+//   2. Hashtags in the post            -> strongest topic signal, used verbatim.
+//   3. Existing vocabulary matches      -> reuse tags you've used before.
+//   4. Salient phrases / keywords       -> only a few non-noisy topic labels.
 //
 // Output: up to MAX_SUGGESTIONS de-duplicated { tag, score, isExisting }.
 
-const MAX_SUGGESTIONS = 6;
+const MAX_SUGGESTIONS = 4;
+const MAX_AUTO_TOPICS = 3;
 
 const STOPWORDS = new Set(
-  `a an and are as at be been being but by for from had has have he her here him his how i if in into is it its just like me my no nor not of off on once only or other our out over own same she should so some such than that the their them then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your yours about above after again against all am any because before below between both did do does doing down during each few more most no off once our too s t can don now also get got make made one two new via amp dont im youre were thats whats lets gonna really thing things lot way ways via per vs etc`.split(
+    `a an and are as at be been being but by for from had has have he her here him his how i if in into is it its just like me my no nor not of off on once only or other our out over own same she should so some such than that the their them then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your yours about above after again against all am any because before below between both did do does doing down during each few more most no off once our too s t can don now also get got make made one two new via amp dont im youre were thats whats lets gonna really thing things lot way ways via per vs etc www com net org io ai co linkedin article post posts write writes follow share shared repost reposted visit website site profile click link links read`.split(
+    /\s+/
+  )
+);
+
+const DOMAIN_WORDS = new Set(
+  "www com net org io ai co dev app linkedin twitter x instagram youtube tiktok substack medium".split(
     /\s+/
   )
 );
 
 function stripUrls(text) {
-  return text.replace(/https?:\/\/\S+/gi, " ");
+  return text
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/\S*)?/gi, " ");
 }
 
 // "ProductManagement" -> "product management", "B2BSaaS" -> "b2 b saas" (best-effort)
@@ -32,6 +40,7 @@ function splitCamel(word) {
 
 function tokenize(text) {
   return stripUrls(text)
+    .replace(/#([\p{L}0-9_]+)/gu, " ")
     .toLowerCase()
     .replace(/[^a-z0-9\s'-]/g, " ")
     .split(/\s+/)
@@ -40,7 +49,26 @@ function tokenize(text) {
 }
 
 function isMeaningful(word) {
-  return word.length >= 3 && !STOPWORDS.has(word) && !/^\d+$/.test(word);
+  return (
+    word.length >= 3 &&
+    !STOPWORDS.has(word) &&
+    !DOMAIN_WORDS.has(word) &&
+    !/^\d+$/.test(word)
+  );
+}
+
+function normalizePersonName(value) {
+  if (!value || typeof value !== "string") return "";
+  return value
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^A-Za-z\s'-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function authorTokens(author) {
+  return new Set(normalizePersonName(author).split(/\s+/).filter((w) => w.length >= 3));
 }
 
 function extractHashtags(rawText) {
@@ -72,30 +100,40 @@ function capitalizedWords(rawText) {
  * @returns {{tag:string, score:number, isExisting:boolean}[]}
  */
 export function suggestTags(text, existingTags = []) {
+  const options =
+    Array.isArray(existingTags) ? { existingTags } : existingTags && typeof existingTags === "object" ? existingTags : {};
   const raw = text || "";
   const tokens = tokenize(raw);
   const tokenSet = new Set(tokens);
   const capWords = capitalizedWords(raw);
+  const usedTags = options.existingTags || [];
+  const author = normalizePersonName(options.author);
+  const authorWordSet = authorTokens(options.author);
 
   // map: tag string -> { score, isExisting }
   const candidates = new Map();
-  const bump = (tag, score, isExisting = false) => {
+  const bump = (tag, score, isExisting = false, category = "topic") => {
     const key = tag.trim().toLowerCase();
     if (key.length < 2) return;
+    if (isNoisyTag(key, authorWordSet)) return;
     const prev = candidates.get(key);
     if (prev) {
       prev.score = Math.max(prev.score, score);
       prev.isExisting = prev.isExisting || isExisting;
+      prev.category = prev.category || category;
     } else {
-      candidates.set(key, { score, isExisting });
+      candidates.set(key, { score, isExisting, category });
     }
   };
 
-  // 1. Hashtags — strongest.
+  // 1. One canonical author label.
+  if (author) bump(`author: ${author}`, 120, false, "author");
+
+  // 2. Hashtags — strongest topic signal.
   for (const h of extractHashtags(raw)) bump(h, 100, false);
 
-  // 2. Existing vocabulary matches.
-  for (const { name } of existingTags) {
+  // 3. Existing vocabulary matches.
+  for (const { name } of usedTags) {
     const parts = name.split(/\s+/).filter(Boolean);
     const allPresent = parts.every((p) => tokenSet.has(p));
     if (allPresent && parts.length) bump(name, 50 + parts.length, true);
@@ -106,11 +144,18 @@ export function suggestTags(text, existingTags = []) {
   const biFreq = new Map();
   for (let i = 0; i < tokens.length; i++) {
     const w = tokens[i];
-    if (isMeaningful(w)) uniFreq.set(w, (uniFreq.get(w) || 0) + 1);
+    if (isMeaningful(w) && !authorWordSet.has(w)) {
+      uniFreq.set(w, (uniFreq.get(w) || 0) + 1);
+    }
     if (i < tokens.length - 1) {
       const a = tokens[i];
       const b = tokens[i + 1];
-      if (isMeaningful(a) && isMeaningful(b)) {
+      if (
+        isMeaningful(a) &&
+        isMeaningful(b) &&
+        !authorWordSet.has(a) &&
+        !authorWordSet.has(b)
+      ) {
         const bg = `${a} ${b}`;
         biFreq.set(bg, (biFreq.get(bg) || 0) + 1);
       }
@@ -133,14 +178,33 @@ export function suggestTags(text, existingTags = []) {
 
   // De-overlap: prefer phrases / existing tags over their component words.
   const kept = [];
+  let topicCount = 0;
   for (const cand of ranked) {
     const words = cand.tag.split(/\s+/);
     const redundant =
       words.length === 1 &&
       kept.some((k) => k.tag.split(/\s+/).includes(cand.tag));
-    if (!redundant) kept.push(cand);
+    if (redundant) continue;
+    if (cand.category === "topic") {
+      if (topicCount >= MAX_AUTO_TOPICS) continue;
+      topicCount += 1;
+    }
+    kept.push(cand);
     if (kept.length >= MAX_SUGGESTIONS) break;
   }
 
   return kept;
+}
+
+function isNoisyTag(tag, authorWordSet) {
+  if (tag.startsWith("author: ")) return false;
+  if (/https?|\.com|\.net|\.org|www/.test(tag)) return true;
+
+  const words = tag.split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  if (words.every((word) => DOMAIN_WORDS.has(word))) return true;
+  if (words.every((word) => authorWordSet.has(word))) return true;
+  if (words.length === 2 && words.some((word) => DOMAIN_WORDS.has(word))) return true;
+
+  return false;
 }
