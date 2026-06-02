@@ -3,12 +3,40 @@ import { api } from "./api.js";
 
 const PREVIEW_LEN = 320;
 
+function hostFromUrl(url) {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function mediaLabel(item) {
+  if (item.title) return item.title;
+  if (item.type === "image") return item.alt || "Image";
+  if (item.type === "video") return "Video";
+  return hostFromUrl(item.url) || "Media";
+}
+
+function metadataBits(post) {
+  const meta = post.metadata || {};
+  return [
+    meta.publishedText,
+    meta.authorProfileUrl ? hostFromUrl(meta.authorProfileUrl) : "",
+    meta.socialCounts?.reactions ? `${meta.socialCounts.reactions} reactions` : "",
+    meta.socialCounts?.comments ? `${meta.socialCounts.comments} comments` : "",
+  ].filter(Boolean);
+}
+
 export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState("");
 
   const long = post.text.length > PREVIEW_LEN;
   const shown = expanded || !long ? post.text : post.text.slice(0, PREVIEW_LEN) + "…";
+  const media = Array.isArray(post.media) ? post.media : [];
+  const bits = metadataBits(post);
 
   // suggested tags not already accepted
   const pending = post.suggested.filter((s) => !post.tags.includes(s.tag));
@@ -66,6 +94,44 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
         <button className="link more" onClick={() => setExpanded((v) => !v)}>
           {expanded ? "show less" : "show more"}
         </button>
+      )}
+
+      {media.length > 0 && (
+        <div className="media-strip">
+          {media.slice(0, 4).map((item, index) => {
+            const href = item.url || item.thumbnailUrl;
+            const thumb = item.thumbnailUrl || (item.type === "image" ? item.url : "");
+            const label = mediaLabel(item);
+            return (
+              <a
+                key={`${href || label}-${index}`}
+                className={`media-item media-item--${item.type || "unknown"}`}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                title={label}
+              >
+                {thumb && (
+                  <img
+                    src={thumb}
+                    alt={item.alt || label}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                )}
+                <span>{label}</span>
+              </a>
+            );
+          })}
+        </div>
+      )}
+
+      {bits.length > 0 && (
+        <div className="capture-meta">
+          {bits.map((bit) => (
+            <span key={bit}>{bit}</span>
+          ))}
+        </div>
       )}
 
       <div className="tags">

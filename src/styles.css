@@ -31,12 +31,25 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  gap: 16px;
   margin-bottom: 20px;
 }
 .topbar h1 { font-size: 22px; margin: 0; }
-.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
 .count { color: var(--muted); font-size: 14px; }
-.logout { background: none; border: none; cursor: pointer; font-size: 13px; }
+.logout,
+.export {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+.export:disabled {
+  color: var(--muted);
+  cursor: default;
+  text-decoration: none;
+}
 
 /* login gate */
 .login {
@@ -213,6 +226,59 @@ button.ghost {
 
 .body { white-space: pre-wrap; margin: 4px 0 8px; font-size: 15px; }
 
+.media-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.media-item {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 88px auto;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  background: #f8fafc;
+}
+.media-item:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+}
+.media-item img {
+  width: 100%;
+  height: 88px;
+  display: block;
+  object-fit: cover;
+  background: #eef1f4;
+}
+.media-item span {
+  min-width: 0;
+  padding: 7px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capture-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 2px;
+}
+.capture-meta span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 3px 8px;
+  background: #f8fafc;
+}
+
 /* tags */
 .tags { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .chip {
@@ -275,3 +341,15 @@ button.ghost {
   width: 96px;
 }
 .chip-form input:focus { outline: 2px solid var(--accent-soft); }
+
+@media (max-width: 520px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .topbar-right {
+    justify-content: flex-start;
+  }
+}

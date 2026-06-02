@@ -29,8 +29,12 @@ export function ensureSchema() {
         text            TEXT NOT NULL,
         saved_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
         status          TEXT NOT NULL DEFAULT 'review',
-        suggested       JSONB NOT NULL DEFAULT '[]'::jsonb
+        suggested       JSONB NOT NULL DEFAULT '[]'::jsonb,
+        metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+        media           JSONB NOT NULL DEFAULT '[]'::jsonb
       )`;
+    await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`;
+    await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS media JSONB NOT NULL DEFAULT '[]'::jsonb`;
     await sql`
       CREATE TABLE IF NOT EXISTS tags (
         id   BIGSERIAL PRIMARY KEY,
@@ -91,6 +95,11 @@ export async function hydrate(row) {
     text: row.text,
     savedAt: row.saved_at,
     status: row.status,
+    metadata:
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata
+        : {},
+    media: Array.isArray(row.media) ? row.media : [],
     tags: await tagsForPost(row.id),
     // jsonb is returned already parsed by the driver
     suggested: Array.isArray(row.suggested) ? row.suggested : [],

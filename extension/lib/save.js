@@ -47,9 +47,17 @@
 
   LIS.capturePost = function capturePost(postEl) {
     if (!postEl) return Promise.resolve({ ok: false, skipped: true });
+    if (LIS.contextAlive && !LIS.contextAlive()) {
+      return Promise.resolve({ ok: false, skipped: true });
+    }
 
     return new Promise((resolve) => {
-      chrome.storage.local.get(["autoCapture"], ({ autoCapture }) => {
+      const done = LIS.safeStorageGet
+        ? LIS.safeStorageGet(["autoCapture"], afterStorage)
+        : false;
+      if (!done) resolve({ ok: false, skipped: true });
+
+      function afterStorage({ autoCapture }) {
         if (autoCapture === false) {
           resolve({ ok: false, skipped: true });
           return;
@@ -64,18 +72,31 @@
           return;
         }
 
-        chrome.runtime.sendMessage({ type: "save-post", payload }, (resp) => {
-          if (chrome.runtime.lastError || !resp?.ok) {
-            const err = friendlyError(
-              chrome.runtime.lastError?.message || resp?.error || ""
-            );
-            LIS.showToast(`LinkedIn Saver: ${err}`, "error");
-            resolve({ ok: false, error: err });
-            return;
-          }
-          resolve(resp);
-        });
-      });
+        if (LIS.contextAlive && !LIS.contextAlive()) {
+          resolve({ ok: false, skipped: true });
+          return;
+        }
+
+        try {
+          chrome.runtime.sendMessage({ type: "save-post", payload }, (resp) => {
+            if (!LIS.contextAlive?.()) {
+              resolve({ ok: false, skipped: true });
+              return;
+            }
+            if (chrome.runtime.lastError || !resp?.ok) {
+              const err = friendlyError(
+                chrome.runtime.lastError?.message || resp?.error || ""
+              );
+              LIS.showToast(`LinkedIn Saver: ${err}`, "error");
+              resolve({ ok: false, error: err });
+              return;
+            }
+            resolve(resp);
+          });
+        } catch {
+          resolve({ ok: false, skipped: true });
+        }
+      }
     });
   };
 })();

@@ -4,6 +4,7 @@ import { AddForm } from "./AddForm.jsx";
 import { PostCard } from "./PostCard.jsx";
 import { Login } from "./Login.jsx";
 import { BrowseControls } from "./BrowseControls.jsx";
+import { exportPostsCsv } from "./exportCsv.js";
 
 export default function App() {
   const [authed, setAuthed] = useState(null); // null = unknown, false = locked, true = ok
@@ -106,6 +107,7 @@ export default function App() {
   const filtering = query.trim() !== "" || activeTags.length > 0;
   const toReview = filtered.filter((p) => p.status === "review");
   const filed = filtered.filter((p) => p.status === "filed");
+  const exportLabel = filtering ? "Export filtered CSV" : "Export CSV";
 
   return (
     <div className="app">
@@ -115,6 +117,15 @@ export default function App() {
           <span className="count">
             {filtering ? `${filtered.length} of ${posts.length}` : `${posts.length} saved`}
           </span>
+          {posts.length > 0 && (
+            <button
+              className="link export"
+              onClick={() => exportPostsCsv(filtered, { filtered: filtering })}
+              disabled={filtered.length === 0}
+            >
+              {exportLabel}
+            </button>
+          )}
           <button className="link logout" onClick={logout}>
             Lock
           </button>
