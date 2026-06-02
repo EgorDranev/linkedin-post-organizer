@@ -21,6 +21,53 @@ function mediaLabel(item) {
   return hostFromUrl(item.url) || "Media";
 }
 
+// "linkedin.com/in/neha-malhotra-7b3a91" -> "Neha Malhotra"
+function nameFromProfileUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+  if (!match) return "";
+  const words = decodeURIComponent(match[1])
+    .split("-")
+    .filter((part) => part && !/\d/.test(part)) // drop trailing hash/id segments
+    .slice(0, 4);
+  if (!words.length) return "";
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+// Conservative author lift from a captured title/text, mirroring the
+// extension's structured patterns ("…Questions and Answers Neha Malhotra").
+const AUTHOR_TITLE_RE =
+  /\b(?:Questions\s+and\s+Answers|Interview\s+Questions|Answers)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/;
+
+function authorFromTitlePattern(value) {
+  const text = String(value || "")
+    .replace(/\bView image\b/gi, " ")
+    .replace(DOMAIN_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.match(AUTHOR_TITLE_RE)?.[1] || "";
+}
+
+// The card may show posts saved before the extension inferred authors, so the
+// stored author can be null. Recover it from data already on the post.
+function deriveAuthor(post) {
+  if (post.author && post.author.trim()) return post.author.trim();
+
+  const fromProfile = nameFromProfileUrl(post.metadata?.authorProfileUrl);
+  if (fromProfile) return fromProfile;
+
+  const media = Array.isArray(post.media) ? post.media : [];
+  const candidates = [
+    ...media.flatMap((item) => [item.title, item.alt, item.description]),
+    post.text,
+  ];
+  for (const candidate of candidates) {
+    const found = authorFromTitlePattern(candidate);
+    if (found) return found;
+  }
+  return "";
+}
+
 function metadataBits(post) {
   const meta = post.metadata || {};
   return [
@@ -121,6 +168,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const primaryThumb =
     primaryMedia?.thumbnailUrl ||
     (primaryMedia?.type === "image" ? primaryMedia?.url : "");
+  const author = deriveAuthor(post);
   const title = previewTitle(displayBlocks, media, post);
   const excerpt = previewExcerpt(displayBlocks, title) || displayText;
   const source = hostFromUrl(post.url) || hostFromUrl(links[0]?.url) || "LinkedIn";
@@ -176,7 +224,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="card-preview-empty">{post.author?.slice(0, 1) || "L"}</div>
+          <div className="card-preview-empty">{author?.slice(0, 1) || "L"}</div>
         )}
 
         <div className="card-preview-fade" />
@@ -223,7 +271,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
 
         <div className="preview-meta">
           <span className="preview-type" aria-hidden="true">▣</span>
-          <span>{post.author || "Unknown"}</span>
+          <span className="preview-author">{author || "Unknown"}</span>
           <span>•</span>
           <span>{source}</span>
           <span>•</span>
@@ -293,7 +341,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           <div className="reader-modal" onMouseDown={(event) => event.stopPropagation()}>
             <div className="reader-head">
               <div>
-                <strong>{post.author || "Unknown author"}</strong>
+                <strong>{author || "Unknown author"}</strong>
                 {post.authorHeadline && <span>{post.authorHeadline}</span>}
               </div>
               <button
