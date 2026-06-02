@@ -377,7 +377,7 @@
     const urn = LIS.getPostUrn(postEl);
     const url = urn
       ? `https://www.linkedin.com/feed/update/${urn}/`
-      : location.href;
+      : null;
 
     const author =
       firstText(postEl, [

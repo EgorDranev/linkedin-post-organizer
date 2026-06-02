@@ -26,6 +26,19 @@ vercel --prod          # deploy
 The schema is created automatically on first request (idempotent
 `CREATE TABLE IF NOT EXISTS`), so there's no migration step.
 
+## Shipping changes
+
+When a feature or fix is ready, commit and push the current branch with:
+
+```bash
+npm run ship -- "Short feature/fix summary"
+```
+
+The ship command runs the production build, stages local changes, creates a
+commit with the supplied message, and pushes the current branch to `origin`.
+It refuses to push directly from `main` or `master` unless `SHIP_ALLOW_MAIN=1`
+is set.
+
 ## Local development
 
 ```bash

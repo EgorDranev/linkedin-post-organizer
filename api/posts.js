@@ -25,6 +25,27 @@ function cleanMedia(value) {
     .filter((item) => item.url || item.thumbnailUrl || item.title);
 }
 
+function cleanPostUrl(value, metadata) {
+  const url = typeof value === "string" && value.trim() ? value.trim() : null;
+  if (!url) return null;
+
+  const urn = typeof metadata.urn === "string" ? metadata.urn.trim() : "";
+  const capturedFrom =
+    typeof metadata.capturedFrom === "string" ? metadata.capturedFrom.trim() : "";
+
+  if (
+    capturedFrom &&
+    !urn &&
+    url === capturedFrom &&
+    /^https:\/\/(?:www\.)?linkedin\.com\//i.test(url) &&
+    !/\/feed\/update\/urn:li:activity:\d+\/?/i.test(url)
+  ) {
+    return null;
+  }
+
+  return url;
+}
+
 export default async function handler(req, res) {
   if (!requireAuth(req, res)) return;
   await ensureSchema();
@@ -39,6 +60,7 @@ export default async function handler(req, res) {
     const { url, author, authorHeadline, text } = req.body || {};
     const metadata = cleanJsonObject(req.body?.metadata);
     const media = cleanMedia(req.body?.media);
+    const postUrl = cleanPostUrl(url, metadata);
     const hasMetadata = Object.keys(metadata).length > 0;
     const hasMedia = media.length > 0;
     if (!text || !text.trim()) {
@@ -48,8 +70,8 @@ export default async function handler(req, res) {
     const tags = await allTags();
     const suggestions = JSON.stringify(suggestTags(text, tags));
 
-    const existing = url
-      ? await sql`SELECT id FROM posts WHERE url = ${url}`
+    const existing = postUrl
+      ? await sql`SELECT id FROM posts WHERE url = ${postUrl}`
       : [];
 
     let id;
@@ -73,7 +95,7 @@ export default async function handler(req, res) {
         INSERT INTO posts (
           url, author, author_headline, text, status, suggested, metadata, media
         )
-        VALUES (${url ?? null}, ${author ?? null}, ${authorHeadline ?? null},
+        VALUES (${postUrl}, ${author ?? null}, ${authorHeadline ?? null},
                 ${text}, 'review', ${suggestions}::jsonb,
                 ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
         RETURNING id`;
