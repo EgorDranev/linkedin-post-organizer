@@ -103,6 +103,9 @@
         ? {
             ...shallowPayload,
             ...scrapedPayload,
+            author: scrapedPayload.author || shallowPayload.author || null,
+            authorHeadline:
+              scrapedPayload.authorHeadline || shallowPayload.authorHeadline || null,
             metadata: {
               ...(shallowPayload.metadata || {}),
               ...(scrapedPayload.metadata || {}),

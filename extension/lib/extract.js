@@ -488,6 +488,49 @@
     return "";
   }
 
+  function likelyAuthorFromText(value) {
+    const text = cleanLinkedInText(value)
+      .replace(/\bView image\b/gi, " ")
+      .replace(/\b(?:www\.)?[a-z0-9-]+\.[a-z]{2,}(?:\/\S*)?/gi, " ")
+      .replace(/\b(?:Interview Tips|Write article|Visit my website|Book an appointment)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const titleAuthor = text.match(
+      /\b(?:Questions\s+and\s+Answers|Interview\s+Questions|Answers)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/
+    )?.[1];
+    if (titleAuthor) return titleAuthor;
+
+    const matches = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/g) || [];
+    const banned = new Set([
+      "View Image",
+      "Interview Questions",
+      "Interview Tips",
+      "Toughest Interview",
+      "Linkedin Post",
+    ]);
+
+    for (const match of matches) {
+      if (banned.has(match)) continue;
+      if (/^(?:Co|Founder|Agreement|Template|Startup|Toughest|Interview|Questions|Answers)\b/.test(match)) {
+        continue;
+      }
+      return match;
+    }
+
+    return "";
+  }
+
+  function fallbackAuthorFromCapture(text, media) {
+    for (const item of media || []) {
+      const author = likelyAuthorFromText(
+        [item.title, item.alt, item.description].filter(Boolean).join(" ")
+      );
+      if (author) return author;
+    }
+    return likelyAuthorFromText(text);
+  }
+
   function isUsefulLink(url, postUrl) {
     if (!url || url.startsWith("javascript:") || url.startsWith("mailto:")) return false;
     try {
@@ -788,6 +831,7 @@
       cleanSavedText(card) ||
       fallbackTextFromAttachments(media, links) ||
       PLACEHOLDER;
+    const fallbackAuthor = fallbackAuthorFromCapture(text, media);
     const metadata = compactObject({
       urn,
       authorProfileUrl:
@@ -800,7 +844,7 @@
 
     return {
       url,
-      author,
+      author: author || fallbackAuthor || null,
       authorHeadline,
       text,
       metadata,
