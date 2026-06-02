@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "./api.js";
 
 const DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/gi;
@@ -429,14 +430,15 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
         </div>
       </div>
 
-      {readerOpen && (
-        <div
-          className="reader-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Captured post reader"
-          onMouseDown={() => setReaderOpen(false)}
-        >
+      {readerOpen &&
+        createPortal(
+          <div
+            className="reader-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Captured post reader"
+            onMouseDown={() => setReaderOpen(false)}
+          >
           <div className="reader-modal" onMouseDown={(event) => event.stopPropagation()}>
             <div className="reader-head">
               <div>
@@ -545,8 +547,9 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               )}
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
     </article>
   );
 }
