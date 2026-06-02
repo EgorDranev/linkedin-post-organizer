@@ -58,6 +58,7 @@ export default async function handler(req, res) {
 
   if (req.method === "POST") {
     const { url, author, authorHeadline, text } = req.body || {};
+    const createOnly = req.body?.createOnly === true;
     const metadata = cleanJsonObject(req.body?.metadata);
     const media = cleanMedia(req.body?.media);
     const postUrl = cleanPostUrl(url, metadata);
@@ -77,6 +78,10 @@ export default async function handler(req, res) {
     let id;
     if (existing.length) {
       id = existing[0].id;
+      if (createOnly) {
+        const post = await getPost(id);
+        return res.status(200).json({ ...post, duplicate: true, skipped: true });
+      }
       await sql`
         UPDATE posts SET author = ${author ?? null},
           author_headline = ${authorHeadline ?? null},

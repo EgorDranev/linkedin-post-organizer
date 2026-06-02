@@ -4,6 +4,7 @@ const serverEl = document.getElementById("server");
 const passwordEl = document.getElementById("password");
 const autoCaptureEl = document.getElementById("autoCapture");
 const openEl = document.getElementById("open");
+const importSavedEl = document.getElementById("importSaved");
 
 function normalize(url) {
   return (url || DEFAULT_SERVER).replace(/\/$/, "");
@@ -51,6 +52,41 @@ document.getElementById("save").addEventListener("click", async () => {
     autoCapture: autoCaptureEl.checked,
   });
   refresh();
+});
+
+importSavedEl.addEventListener("click", async () => {
+  importSavedEl.disabled = true;
+  statusEl.textContent = "Starting saved-posts import…";
+  statusEl.className = "status";
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id || !/^https:\/\/(?:www\.)?linkedin\.com\//i.test(tab.url || "")) {
+    await chrome.tabs.create({ url: "https://www.linkedin.com/my-items/saved-posts/" });
+    statusEl.textContent = "Open the new LinkedIn saved-posts tab, then click import.";
+    statusEl.className = "status";
+    importSavedEl.disabled = false;
+    return;
+  }
+
+  try {
+    chrome.tabs.sendMessage(tab.id, { type: "import-saved-posts" }, (resp) => {
+      importSavedEl.disabled = false;
+      if (chrome.runtime.lastError || !resp?.ok) {
+        statusEl.textContent = "Could not start import on this tab.";
+        statusEl.className = "status bad";
+        return;
+      }
+      const { added = 0, skipped = 0, failed = 0 } = resp.stats || {};
+      statusEl.textContent = `Import done: ${added} added, ${skipped} skipped${
+        failed ? `, ${failed} failed` : ""
+      }.`;
+      statusEl.className = failed ? "status bad" : "status ok";
+    });
+  } catch {
+    importSavedEl.disabled = false;
+    statusEl.textContent = "Could not start import on this tab.";
+    statusEl.className = "status bad";
+  }
 });
 
 refresh();

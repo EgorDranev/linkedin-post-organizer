@@ -45,7 +45,43 @@
     return raw;
   }
 
-  LIS.capturePost = function capturePost(postEl) {
+  function sendSaveMessage(payload) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ type: "save-post", payload }, (resp) => {
+          if (!LIS.contextAlive?.()) {
+            resolve({ ok: false, skipped: true });
+            return;
+          }
+          if (chrome.runtime.lastError || !resp?.ok) {
+            const err = friendlyError(
+              chrome.runtime.lastError?.message || resp?.error || ""
+            );
+            LIS.showToast(`LinkedIn Saver: ${err}`, "error");
+            resolve({ ok: false, error: err });
+            return;
+          }
+          resolve(resp);
+        });
+      } catch {
+        resolve({ ok: false, skipped: true });
+      }
+    });
+  }
+
+  LIS.capturePayload = function capturePayload(payload, options = {}) {
+    if (!payload) return Promise.resolve({ ok: false, skipped: true });
+    if (LIS.contextAlive && !LIS.contextAlive()) {
+      return Promise.resolve({ ok: false, skipped: true });
+    }
+
+    const body = { ...payload };
+    if (options.createOnly) body.createOnly = true;
+    delete body.urn;
+    return sendSaveMessage(body);
+  };
+
+  LIS.capturePost = function capturePost(postEl, options = {}) {
     if (!postEl) return Promise.resolve({ ok: false, skipped: true });
     if (LIS.contextAlive && !LIS.contextAlive()) {
       return Promise.resolve({ ok: false, skipped: true });
@@ -58,14 +94,13 @@
       if (!done) resolve({ ok: false, skipped: true });
 
       function afterStorage({ autoCapture }) {
-        if (autoCapture === false) {
+        if (autoCapture === false && !options.ignoreAutoCapture) {
           resolve({ ok: false, skipped: true });
           return;
         }
 
         const payload = LIS.extract(postEl);
         const urn = payload.urn || LIS.getPostUrn(postEl);
-        delete payload.urn;
 
         if (recentlyCaptured(urn)) {
           resolve({ ok: true, skipped: true, duplicate: true });
@@ -77,25 +112,7 @@
           return;
         }
 
-        try {
-          chrome.runtime.sendMessage({ type: "save-post", payload }, (resp) => {
-            if (!LIS.contextAlive?.()) {
-              resolve({ ok: false, skipped: true });
-              return;
-            }
-            if (chrome.runtime.lastError || !resp?.ok) {
-              const err = friendlyError(
-                chrome.runtime.lastError?.message || resp?.error || ""
-              );
-              LIS.showToast(`LinkedIn Saver: ${err}`, "error");
-              resolve({ ok: false, error: err });
-              return;
-            }
-            resolve(resp);
-          });
-        } catch {
-          resolve({ ok: false, skipped: true });
-        }
+        LIS.capturePayload(payload, options).then(resolve);
       }
     });
   };

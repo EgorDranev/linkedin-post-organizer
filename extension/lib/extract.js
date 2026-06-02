@@ -52,6 +52,10 @@
     return id ? `urn:li:activity:${id}` : "";
   }
 
+  function postUrlFromUrn(urn) {
+    return urn ? `https://www.linkedin.com/feed/update/${urn}/` : "";
+  }
+
   function getIdentity(el) {
     if (!el?.getAttribute) return "";
     return (
@@ -203,6 +207,21 @@
       ) {
         return parsed.searchParams.get("url") || parsed.href;
       }
+      parsed.hash = "";
+      return parsed.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function canonicalPostUrl(value) {
+    const url = canonicalLinkedInUrl(absoluteUrl(value));
+    if (!url) return "";
+    const urn = normalizeUrn(url);
+    if (urn) return postUrlFromUrn(urn);
+
+    try {
+      const parsed = new URL(url, location.href);
       parsed.hash = "";
       return parsed.href;
     } catch {
@@ -475,6 +494,68 @@
     return media.slice(0, 12);
   }
 
+  function findPostUrlIn(el) {
+    const direct = normalizeUrn(
+      `${attr(el, "data-urn")} ${attr(el, "data-id")} ${attr(el, "href")}`
+    );
+    if (direct) return postUrlFromUrn(direct);
+
+    for (const a of el?.querySelectorAll?.("a[href]") || []) {
+      const url = canonicalPostUrl(attr(a, "href"));
+      if (/\/feed\/update\/urn:li:activity:\d+\/?/i.test(url)) return url;
+    }
+
+    return "";
+  }
+
+  function savedItemCardFor(link) {
+    const selectors = [
+      "li",
+      ".reusable-search__result-container",
+      ".entity-result",
+      ".artdeco-list__item",
+      "[data-view-name]",
+    ];
+    for (const selector of selectors) {
+      const card = link.closest?.(selector);
+      if (card && findPostUrlIn(card)) return card;
+    }
+    return link.closest?.("div") || link;
+  }
+
+  function cleanSavedText(card) {
+    const lines = clean(card)
+      .split("\n")
+      .map((line) => cleanLinkedInText(line))
+      .filter(Boolean)
+      .filter((line) => !isChromeText(line))
+      .filter((line) => !/^(all|articles|saved posts|my items)$/i.test(line));
+
+    const deduped = uniqueTexts(lines);
+    const text = deduped.slice(1).join("\n").trim() || deduped.join("\n").trim();
+    return text || "";
+  }
+
+  function extractSavedAuthor(card) {
+    const selectors = [
+      ".entity-result__title-text",
+      ".entity-result__title",
+      ".update-components-actor__title",
+      ".feed-shared-actor__title",
+      "a[href*='/in/'] span[aria-hidden='true']",
+      "a[href*='/company/'] span[aria-hidden='true']",
+      "a[href*='/in/']",
+      "a[href*='/company/']",
+    ];
+    for (const selector of selectors) {
+      const author = cleanAuthor(card.querySelector(selector));
+      if (author) return author;
+    }
+    return "";
+  }
+
+  LIS.canonicalPostUrl = canonicalPostUrl;
+
   LIS.findPosts = function findPosts() {
     return document.querySelectorAll(POST_SELECTOR);
   };
@@ -548,11 +629,57 @@
     return getIdentity(inner);
   };
 
+  LIS.findSavedPostItems = function findSavedPostItems() {
+    const seen = new Set();
+    const items = [];
+    for (const link of document.querySelectorAll(
+      "a[href*='/feed/update/urn:li:activity'], a[href*='urn:li:activity']"
+    )) {
+      const url = canonicalPostUrl(attr(link, "href"));
+      if (!url || seen.has(url)) continue;
+      const card = savedItemCardFor(link);
+      if (!card) continue;
+      seen.add(url);
+      items.push({ url, card });
+    }
+    return items;
+  };
+
+  LIS.extractSavedItem = function extractSavedItem(item) {
+    const card = item.card || item;
+    const url = item.url || findPostUrlIn(card);
+    const urn = normalizeUrn(url);
+    const author = extractSavedAuthor(card) || null;
+    const authorHeadline =
+      firstText(card, [
+        ".entity-result__primary-subtitle",
+        ".entity-result__secondary-subtitle",
+        ".update-components-actor__description",
+        ".feed-shared-actor__description",
+      ]) || null;
+    const text = extractPostText(card) || cleanSavedText(card) || PLACEHOLDER;
+    const metadata = compactObject({
+      urn,
+      authorProfileUrl:
+        firstHref(card, ["a[href*='/in/']", "a[href*='/company/']"]) || null,
+      capturedAt: new Date().toISOString(),
+      capturedFrom: location.href,
+      importedFromSavedPosts: true,
+    });
+
+    return {
+      url,
+      author,
+      authorHeadline,
+      text,
+      metadata,
+      media: extractMedia(card),
+    };
+  };
+
   LIS.extract = function extract(postEl) {
     const urn = LIS.getPostUrn(postEl);
-    const url = urn
-      ? `https://www.linkedin.com/feed/update/${urn}/`
-      : null;
+    const url = urn ? postUrlFromUrn(urn) : null;
 
     const author = extractAuthor(postEl) || null;
     const authorHeadline =

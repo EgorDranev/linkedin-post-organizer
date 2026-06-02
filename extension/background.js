@@ -20,6 +20,36 @@ async function getConfig() {
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === "existing-post-urls") {
+    getConfig()
+      .then(({ server, password }) => {
+        const headers = {};
+        if (password) headers["x-app-password"] = password;
+        return fetch(`${server}/api/posts`, { headers });
+      })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`server ${r.status}`);
+        const posts = await r.json();
+        const urls = [];
+        for (const post of posts) {
+          if (post.url) urls.push(post.url);
+          if (post.metadata?.urn) {
+            urls.push(`https://www.linkedin.com/feed/update/${post.metadata.urn}/`);
+          }
+        }
+        sendResponse({
+          ok: true,
+          urls,
+        });
+      })
+      .catch((err) => {
+        const msg = err?.message || "lookup failed";
+        sendResponse({ ok: false, error: msg });
+      });
+
+    return true;
+  }
+
   if (msg?.type !== "save-post") return;
 
   getConfig()
