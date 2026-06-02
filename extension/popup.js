@@ -10,6 +10,35 @@ function normalize(url) {
   return (url || DEFAULT_SERVER).replace(/\/$/, "");
 }
 
+function sendImportMessage(tabId) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, { type: "import-saved-posts" }, (resp) => {
+      if (chrome.runtime.lastError || !resp?.ok) {
+        resolve({ ok: false, error: chrome.runtime.lastError?.message || "" });
+        return;
+      }
+      resolve(resp);
+    });
+  });
+}
+
+async function ensureImporterInjected(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: [
+      "lib/chrome-safe.js",
+      "lib/extract.js",
+      "lib/save.js",
+      "native-save.js",
+      "saved-import.js",
+    ],
+  });
+  await chrome.scripting.insertCSS({
+    target: { tabId },
+    files: ["content.css"],
+  });
+}
+
 async function refresh() {
   const { serverUrl, appPassword, autoCapture } = await chrome.storage.local.get([
     "serverUrl",
@@ -69,22 +98,26 @@ importSavedEl.addEventListener("click", async () => {
   }
 
   try {
-    chrome.tabs.sendMessage(tab.id, { type: "import-saved-posts" }, (resp) => {
-      importSavedEl.disabled = false;
-      if (chrome.runtime.lastError || !resp?.ok) {
-        statusEl.textContent = "Could not start import on this tab.";
-        statusEl.className = "status bad";
-        return;
-      }
-      const { added = 0, skipped = 0, failed = 0 } = resp.stats || {};
-      statusEl.textContent = `Import done: ${added} added, ${skipped} skipped${
-        failed ? `, ${failed} failed` : ""
-      }.`;
-      statusEl.className = failed ? "status bad" : "status ok";
-    });
-  } catch {
+    let resp = await sendImportMessage(tab.id);
+    if (!resp.ok) {
+      await ensureImporterInjected(tab.id);
+      resp = await sendImportMessage(tab.id);
+    }
+
     importSavedEl.disabled = false;
-    statusEl.textContent = "Could not start import on this tab.";
+    if (!resp.ok) {
+      statusEl.textContent = "Could not start import on this tab.";
+      statusEl.className = "status bad";
+      return;
+    }
+    const { added = 0, skipped = 0, failed = 0 } = resp.stats || {};
+    statusEl.textContent = `Import done: ${added} added, ${skipped} skipped${
+      failed ? `, ${failed} failed` : ""
+    }.`;
+    statusEl.className = failed ? "status bad" : "status ok";
+  } catch (err) {
+    importSavedEl.disabled = false;
+    statusEl.textContent = err?.message || "Could not start import on this tab.";
     statusEl.className = "status bad";
   }
 });
