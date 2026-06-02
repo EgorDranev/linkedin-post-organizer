@@ -110,8 +110,8 @@ importSavedEl.addEventListener("click", async () => {
       statusEl.className = "status bad";
       return;
     }
-    const { added = 0, skipped = 0, failed = 0 } = resp.stats || {};
-    statusEl.textContent = `Import done: ${added} added, ${skipped} skipped${
+    const { added = 0, updated = 0, skipped = 0, failed = 0 } = resp.stats || {};
+    statusEl.textContent = `Import done: ${added} added, ${updated} updated, ${skipped} skipped${
       failed ? `, ${failed} failed` : ""
     }.`;
     statusEl.className = failed ? "status bad" : "status ok";

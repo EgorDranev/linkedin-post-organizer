@@ -379,6 +379,29 @@
     );
   }
 
+  function isAttachmentTextNode(el) {
+    return Boolean(
+      el?.closest?.(
+        [
+          ".feed-shared-article",
+          ".update-components-article",
+          ".feed-shared-external-video",
+          ".update-components-external-video",
+          ".update-components-document",
+          ".document-s-container",
+          ".document-s-container__content",
+          ".feed-shared-image",
+          ".update-components-image",
+          ".update-components-linkedin-video",
+          ".feed-shared-linkedin-video",
+          "[data-test-id*='document']",
+          "[data-test-id*='attachment']",
+          "[data-test-id*='article']",
+        ].join(", ")
+      )
+    );
+  }
+
   function extractPostText(postEl) {
     const selectors = [
       ".update-components-text",
@@ -391,13 +414,17 @@
       ".feed-shared-text",
       ".feed-shared-text span[aria-hidden='true']",
       ".update-components-update-v2__commentary",
-      ".attributed-text-segment-list__content",
       "[data-test-id='main-feed-activity-card__commentary']",
       "[data-test-id='post-content']",
       "[data-test-id='feed-shared-text']",
     ];
 
-    const direct = uniqueTexts(selectors.map((selector) => clean(postEl?.querySelector(selector))));
+    const direct = uniqueTexts(
+      selectors
+        .map((selector) => postEl?.querySelector(selector))
+        .filter((el) => el && !isAttachmentTextNode(el))
+        .map(clean)
+    );
     if (direct.length) return direct[0];
 
     const scoped = [];
@@ -405,13 +432,13 @@
       [
         "[data-test-id*='commentary']",
         "[data-test-id*='post-content']",
-        ".attributed-text-segment-list__content",
         ".break-words",
         "div[dir='auto']",
         "span[dir='auto']",
       ].join(", ")
     ) || []) {
       if (!isVisibleElement(el)) continue;
+      if (isAttachmentTextNode(el)) continue;
       if (el.closest(".update-components-actor, .feed-shared-actor")) continue;
       if (el.closest(".feed-shared-social-action-bar, .social-details-social-actions")) continue;
       if (el.closest("[role='menu'], .artdeco-dropdown__content")) continue;

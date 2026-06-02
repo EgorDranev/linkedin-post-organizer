@@ -45,6 +45,34 @@
     );
   }
 
+  function documentTextPenalty(text) {
+    const value = String(text || "");
+    let penalty = 0;
+    if (/Table of Contents/i.test(value)) penalty += 4;
+    if (/\bWHEREAS\b|\bNOW,\s*THEREFORE\b/i.test(value)) penalty += 3;
+    if (/\bLast edited on\b/i.test(value)) penalty += 2;
+    if (/\bThis document has been adapted\b/i.test(value)) penalty += 2;
+    if (/\[[A-Z _-]{3,}\]/.test(value)) penalty += 2;
+    if ((value.match(/\b\d{1,2}\s+[A-Z][A-Za-z][A-Za-z -]{5,}/g) || []).length > 8) {
+      penalty += 2;
+    }
+    return penalty;
+  }
+
+  function commentaryScore(payload) {
+    if (!hasExtractedText(payload)) return -100;
+    const text = payload.text.trim();
+    let score = 0;
+    if (payload.author) score += 1;
+    if (text.length >= 80) score += 2;
+    if (text.length >= 180) score += 2;
+    if (text.length > 5000) score -= 3;
+    if (/\n/.test(text)) score += 1;
+    if (/I\b|we\b|you\b|founder|startup|agreement|recommend/i.test(text)) score += 1;
+    score -= documentTextPenalty(text) * 3;
+    return score;
+  }
+
   function scrapePostUrl(url) {
     return new Promise((resolve) => {
       try {
@@ -66,14 +94,12 @@
       if (!item.url || seen.has(item.url)) continue;
       seen.add(item.url);
 
-      if (existing.has(item.url)) {
-        stats.skipped += 1;
-        continue;
-      }
-
       const shallowPayload = LIS.extractSavedItem(item);
       const scrapedPayload = await scrapePostUrl(item.url);
-      const payload = hasExtractedText(scrapedPayload) || scrapedPayload?.author
+      const useScraped =
+        (hasExtractedText(scrapedPayload) || scrapedPayload?.author) &&
+        commentaryScore(scrapedPayload) >= commentaryScore(shallowPayload);
+      const payload = useScraped
         ? {
             ...shallowPayload,
             ...scrapedPayload,
@@ -94,9 +120,13 @@
         continue;
       }
 
-      const resp = await LIS.capturePayload(payload, { createOnly: true });
+      const wasExisting = existing.has(item.url);
+      const resp = await LIS.capturePayload(payload);
       if (resp?.ok && !resp.post?.duplicate && !resp.post?.skipped) {
         stats.added += 1;
+        existing.add(item.url);
+      } else if (resp?.ok && resp.post?.duplicate && wasExisting) {
+        stats.updated += 1;
         existing.add(item.url);
       } else if (resp?.ok && (resp.post?.duplicate || resp.post?.skipped)) {
         stats.skipped += 1;
@@ -108,7 +138,7 @@
   }
 
   function showProgress(stats, done = false) {
-    const parts = [`${stats.added} added`, `${stats.skipped} skipped`];
+    const parts = [`${stats.added} added`, `${stats.updated} updated`, `${stats.skipped} skipped`];
     if (stats.failed) parts.push(`${stats.failed} failed`);
     LIS.showToast(
       `LinkedIn Saver: ${done ? "import done" : "importing saved posts"} — ${parts.join(", ")}`,
@@ -119,7 +149,7 @@
   async function runImport() {
     const existing = await getExistingUrls();
     const seen = new Set();
-    const stats = { added: 0, skipped: 0, failed: 0 };
+    const stats = { added: 0, updated: 0, skipped: 0, failed: 0 };
     let lastSeenSize = -1;
     let idleRounds = 0;
 
