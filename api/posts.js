@@ -1,4 +1,13 @@
-import { ensureSchema, sql, allTags, hydrate, getPost } from "./_lib/db.js";
+import { 
+  ensureSchema, 
+  sql, 
+  allTags, 
+  hydrate, 
+  getPost,
+  removePostFromAllCollections,
+  addPostToCollection,
+  getCollectionsForPost
+} from "./_lib/db.js";
 import { suggestTags } from "./_lib/tagger.js";
 import { requireAuth } from "./_lib/auth.js";
 
@@ -107,6 +116,17 @@ export default async function handler(req, res) {
                 ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
         RETURNING id`;
       id = rows[0].id;
+    }
+
+    // Handle collection associations if provided
+    if (req.body.collections && Array.isArray(req.body.collections)) {
+      // Remove post from all collections first
+      await removePostFromAllCollections(id);
+      
+      // Add to specified collections
+      for (const collectionId of req.body.collections) {
+        await addPostToCollection(id, collectionId);
+      }
     }
 
     const post = await getPost(id);

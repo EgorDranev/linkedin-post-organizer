@@ -218,9 +218,10 @@ const ClockIcon = (props) => (
   </svg>
 );
 
-export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
+export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [], collections = [], onCollectionChange }) {
   const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
 
   const displayText = useMemo(() => readableText(post.text), [post.text]);
   const displayBlocks = useMemo(() => textBlocks(displayText), [displayText]);
@@ -263,21 +264,21 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   // suggested tags not already accepted
   const pending = post.suggested.filter((s) => !post.tags.includes(s.tag));
 
-  const persist = (tags, suggested) =>
-    api.updatePost(post.id, { tags, suggested }).then(onUpdated);
+  const persist = (tags, suggested, collectionIds = []) =>
+    api.updatePost(post.id, { tags, suggested, collections: collectionIds }).then(onUpdated);
 
   const acceptTag = (tag) => {
     const tags = [...new Set([...post.tags, tag])];
     const suggested = post.suggested.filter((s) => s.tag !== tag);
-    persist(tags, suggested);
+    persist(tags, suggested, post.collections.map(c => c.id));
   };
 
   const dismissSuggestion = (tag) => {
     const suggested = post.suggested.filter((s) => s.tag !== tag);
-    persist(post.tags, suggested);
+    persist(post.tags, suggested, post.collections.map(c => c.id));
   };
 
-  const removeTag = (tag) => persist(post.tags.filter((t) => t !== tag));
+  const removeTag = (tag) => persist(post.tags.filter((t) => t !== tag), post.suggested, post.collections.map(c => c.id));
 
   const addCustom = (e) => {
     e.preventDefault();
@@ -285,6 +286,30 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     if (!tag) return;
     setDraft("");
     acceptTag(tag);
+  };
+
+  const toggleCollection = async (collectionId) => {
+    try {
+      const isInCollection = post.collections.some(c => c.id === collectionId);
+      let newCollections;
+
+      if (isInCollection) {
+        // Remove from collection
+        await api.removePostFromCollection(post.id, collectionId);
+        newCollections = post.collections.filter(c => c.id !== collectionId);
+      } else {
+        // Add to collection
+        await api.addPostToCollection(post.id, collectionId);
+        const collectionToAdd = collections.find(c => c.id === collectionId);
+        newCollections = [...post.collections, collectionToAdd];
+      }
+
+      // Update the post with new collection info
+      persist(post.tags, post.suggested, newCollections.map(c => c.id));
+      onCollectionChange && onCollectionChange(post.id, newCollections);
+    } catch (error) {
+      console.error("Error updating collection:", error);
+    }
   };
 
   // Same three actions on every card; placement differs (overlaid on the media
@@ -427,6 +452,39 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               onChange={(e) => setDraft(e.target.value)}
             />
           </form>
+          
+          {/* Collections dropdown */}
+          <div className="collection-dropdown-container">
+            <button 
+              className="collection-dropdown-btn"
+              onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}
+              title="Add to collection"
+            >
+              📁
+            </button>
+            
+            {showCollectionDropdown && (
+              <div className="collection-dropdown">
+                <div className="collection-dropdown-content">
+                  {collections.map((collection) => {
+                    const isInCollection = post.collections.some(c => c.id === collection.id);
+                    return (
+                      <div key={collection.id} className="collection-option">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={isInCollection}
+                            onChange={() => toggleCollection(collection.id)}
+                          />
+                          <span>{collection.name}</span>
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
