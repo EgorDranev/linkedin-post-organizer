@@ -83,12 +83,73 @@
     if (!looksLikePost(el)) return 0;
     let score = 1;
     if (getIdentity(el)) score += 4;
-    if (el.querySelector(".update-components-text, .feed-shared-inline-show-more-text")) {
+    if (
+      el.querySelector(
+        ".update-components-text, .feed-shared-inline-show-more-text, [data-test-id*='commentary'], [data-test-id*='post-content']"
+      )
+    ) {
       score += 3;
     }
     if (el.querySelector(".update-components-actor, .feed-shared-actor")) score += 2;
     if (el.querySelector(".feed-shared-control-menu__trigger")) score += 1;
     return score;
+  }
+
+  function contentSignalScore(el) {
+    if (!el?.querySelector) return 0;
+    let score = 0;
+    const text = clean(el);
+    if (getIdentity(el)) score += 8;
+    if (el.matches?.("div.feed-shared-update-v2, div.update-components-activity, .fie-impression-container")) {
+      score += 10;
+    }
+    if (el.querySelector(".update-components-actor, .feed-shared-actor")) score += 8;
+    if (
+      el.querySelector(
+        ".update-components-text, .feed-shared-inline-show-more-text, [data-test-id*='commentary'], [data-test-id*='post-content'], .attributed-text-segment-list__content"
+      )
+    ) {
+      score += 8;
+    }
+    if (el.querySelector(".feed-shared-control-menu__trigger, button[aria-label*='control menu' i], button[aria-label*='more actions' i]")) {
+      score += 4;
+    }
+    if (el.querySelector(".social-details-social-counts, .social-details-social-actions")) {
+      score += 2;
+    }
+    if (text.length > 80) score += 1;
+    if (text.length > 350) score += 1;
+    if (text.length > 5000) score -= 6;
+    return score;
+  }
+
+  function normalizePostRoot(el) {
+    if (!el?.parentElement) return el || null;
+    let best = el;
+    let bestScore = contentSignalScore(el);
+    let node = el.parentElement;
+
+    for (let depth = 0; depth < 14 && node; depth++) {
+      if (node === document.body || node === document.documentElement) break;
+      const r = node.getBoundingClientRect?.();
+      if (r && r.width > innerWidth * 0.98 && r.height > innerHeight * 1.4) break;
+
+      const score = contentSignalScore(node);
+      if (score > bestScore) {
+        best = node;
+        bestScore = score;
+      }
+
+      if (
+        node.matches?.("div.feed-shared-update-v2, div.update-components-activity, .fie-impression-container") &&
+        score >= 16
+      ) {
+        break;
+      }
+      node = node.parentElement;
+    }
+
+    return best || el;
   }
 
   function rectDistance(a, b) {
@@ -309,10 +370,15 @@
     const selectors = [
       ".update-components-text",
       ".update-components-text .break-words",
+      ".update-components-text span[aria-hidden='true']",
       ".feed-shared-update-v2__description",
       ".feed-shared-update-v2__commentary",
       ".feed-shared-inline-show-more-text",
+      ".feed-shared-inline-show-more-text span[aria-hidden='true']",
+      ".feed-shared-text",
+      ".feed-shared-text span[aria-hidden='true']",
       ".update-components-update-v2__commentary",
+      ".attributed-text-segment-list__content",
       "[data-test-id='main-feed-activity-card__commentary']",
       "[data-test-id='post-content']",
       "[data-test-id='feed-shared-text']",
@@ -326,6 +392,7 @@
       [
         "[data-test-id*='commentary']",
         "[data-test-id*='post-content']",
+        ".attributed-text-segment-list__content",
         ".break-words",
         "div[dir='auto']",
         "span[dir='auto']",
@@ -357,9 +424,11 @@
   function extractAuthor(postEl) {
     const selectors = [
       ".update-components-actor__title",
+      ".update-components-actor__title span[aria-hidden='true']",
       ".update-components-actor__name",
       ".update-components-actor__meta a span[dir]",
       ".feed-shared-actor__title",
+      ".feed-shared-actor__title span[aria-hidden='true']",
       ".feed-shared-actor__name",
       "[data-test-id='main-feed-activity-card__actor-name']",
     ];
@@ -563,13 +632,13 @@
   LIS.findPostFrom = function findPostFrom(el) {
     if (!el?.closest) return null;
 
-    const container = el.closest(POST_CONTAINER_SELECTOR);
-    if (container) return container;
-
     const direct = el.closest(
       "[data-urn*='urn:li:activity'], [data-id*='urn:li:activity']"
     );
-    if (direct) return direct.closest(POST_CONTAINER_SELECTOR) || direct;
+    if (direct) return normalizePostRoot(direct.closest(POST_CONTAINER_SELECTOR) || direct);
+
+    const container = el.closest(POST_CONTAINER_SELECTOR);
+    if (container) return normalizePostRoot(container);
 
     let best = null;
     let bestScore = 0;
@@ -583,7 +652,7 @@
       }
       node = node.parentElement;
     }
-    return best;
+    return normalizePostRoot(best);
   };
 
   LIS.findPostNearPoint = function findPostNearPoint(x, y) {
@@ -678,6 +747,7 @@
   };
 
   LIS.extract = function extract(postEl) {
+    postEl = normalizePostRoot(postEl);
     const urn = LIS.getPostUrn(postEl);
     const url = urn ? postUrlFromUrn(urn) : null;
 
