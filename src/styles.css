@@ -278,6 +278,30 @@ button.ghost {
   padding: 3px 8px;
   background: #f8fafc;
 }
+.link-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 2px;
+}
+.link-strip a {
+  max-width: 100%;
+  border: 1px solid #bfd5ea;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 4px 9px;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.link-strip a:hover {
+  border-color: var(--accent);
+  text-decoration: underline;
+}
 
 /* tags */
 .tags { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }

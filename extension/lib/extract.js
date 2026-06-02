@@ -28,6 +28,21 @@
     return raw.trim().replace(/\s+\n/g, "\n").replace(/[ \t]+/g, " ");
   }
 
+  function cleanText(value) {
+    return String(value || "")
+      .trim()
+      .replace(/\s+\n/g, "\n")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n");
+  }
+
+  function cleanLinkedInText(value) {
+    return cleanText(value)
+      .replace(/\bsee more\b/gi, "")
+      .replace(/\bshow more\b/gi, "")
+      .trim();
+  }
+
   function normalizeUrn(value) {
     const raw = value || "";
     const direct = raw.match(/urn:li:activity:\d+/i)?.[0];
@@ -156,10 +171,40 @@
     return "";
   }
 
+  function uniqueTexts(values) {
+    const seen = new Set();
+    const out = [];
+    for (const value of values) {
+      const text = cleanLinkedInText(value);
+      const key = text.toLowerCase();
+      if (!text || seen.has(key)) continue;
+      seen.add(key);
+      out.push(text);
+    }
+    return out;
+  }
+
   function absoluteUrl(value) {
     if (!value) return "";
     try {
       return new URL(value, location.href).href;
+    } catch {
+      return "";
+    }
+  }
+
+  function canonicalLinkedInUrl(url) {
+    if (!url) return "";
+    try {
+      const parsed = new URL(url, location.href);
+      if (
+        /(^|\.)linkedin\.com$/i.test(parsed.hostname) &&
+        parsed.pathname === "/redir/redirect"
+      ) {
+        return parsed.searchParams.get("url") || parsed.href;
+      }
+      parsed.hash = "";
+      return parsed.href;
     } catch {
       return "";
     }
@@ -209,6 +254,11 @@
     return el?.getAttribute?.(name) || "";
   }
 
+  function isVisibleElement(el) {
+    const r = el?.getBoundingClientRect?.();
+    return !r || (r.width > 0 && r.height > 0);
+  }
+
   function imageUrl(img) {
     return absoluteUrl(
       img?.currentSrc ||
@@ -223,10 +273,135 @@
     if (!url || url.startsWith("data:")) return false;
     const r = img.getBoundingClientRect?.();
     if (r && (r.width < 80 || r.height < 60)) return false;
+    if (r && r.width >= 150 && r.height >= 90) return true;
     const label = [attr(img, "alt"), attr(img, "class"), attr(img.closest?.("a"), "class")]
       .join(" ")
       .toLowerCase();
     return !/(profile|avatar|emoji|logo|icon)/.test(label);
+  }
+
+  function isChromeText(text) {
+    return /^(like|comment|repost|send|save|follow|connect|message|open|share|copy link|report|not interested|turn on notifications|view profile)$/i.test(
+      text
+    );
+  }
+
+  function extractPostText(postEl) {
+    const selectors = [
+      ".update-components-text",
+      ".update-components-text .break-words",
+      ".feed-shared-update-v2__description",
+      ".feed-shared-update-v2__commentary",
+      ".feed-shared-inline-show-more-text",
+      ".update-components-update-v2__commentary",
+      "[data-test-id='main-feed-activity-card__commentary']",
+      "[data-test-id='post-content']",
+      "[data-test-id='feed-shared-text']",
+    ];
+
+    const direct = uniqueTexts(selectors.map((selector) => clean(postEl?.querySelector(selector))));
+    if (direct.length) return direct[0];
+
+    const scoped = [];
+    for (const el of postEl?.querySelectorAll?.(
+      [
+        "[data-test-id*='commentary']",
+        "[data-test-id*='post-content']",
+        ".break-words",
+        "div[dir='auto']",
+        "span[dir='auto']",
+      ].join(", ")
+    ) || []) {
+      if (!isVisibleElement(el)) continue;
+      if (el.closest(".update-components-actor, .feed-shared-actor")) continue;
+      if (el.closest(".feed-shared-social-action-bar, .social-details-social-actions")) continue;
+      if (el.closest("[role='menu'], .artdeco-dropdown__content")) continue;
+      const text = clean(el);
+      if (text.length < 12 || isChromeText(text)) continue;
+      scoped.push(text);
+    }
+
+    const candidates = uniqueTexts(scoped).sort((a, b) => b.length - a.length);
+    return candidates[0] || "";
+  }
+
+  function cleanAuthor(value) {
+    const raw = value?.nodeType ? clean(value) : value;
+    const text = cleanLinkedInText(raw)
+      .replace(/\s+(?:View|Open)\s+.+?\s+profile.*$/i, "")
+      .replace(/\b(?:View|Open)\s+(.+?)'?s?\s+profile\b/i, "$1")
+      .replace(/\s+following\b/i, "")
+      .trim();
+    return text.split("\n").map((line) => line.trim()).filter(Boolean)[0] || "";
+  }
+
+  function extractAuthor(postEl) {
+    const selectors = [
+      ".update-components-actor__title",
+      ".update-components-actor__name",
+      ".update-components-actor__meta a span[dir]",
+      ".feed-shared-actor__title",
+      ".feed-shared-actor__name",
+      "[data-test-id='main-feed-activity-card__actor-name']",
+    ];
+    for (const selector of selectors) {
+      const author = cleanAuthor(postEl?.querySelector(selector));
+      if (author) return author;
+    }
+
+    for (const link of postEl?.querySelectorAll?.(
+      ".update-components-actor a[href*='/in/'], .update-components-actor a[href*='/company/'], .feed-shared-actor a[href*='/in/'], .feed-shared-actor a[href*='/company/']"
+    ) || []) {
+      const aria = attr(link, "aria-label");
+      const author = cleanAuthor(aria || clean(link));
+      if (author) return author;
+    }
+
+    return "";
+  }
+
+  function isUsefulLink(url, postUrl) {
+    if (!url || url.startsWith("javascript:") || url.startsWith("mailto:")) return false;
+    try {
+      const parsed = new URL(url);
+      if (postUrl && parsed.href === postUrl) return false;
+      if (!/^https?:$/i.test(parsed.protocol)) return false;
+      const path = parsed.pathname;
+      if (/(\/mynetwork\/|\/notifications\/|\/jobs\/)/i.test(path)) {
+        return false;
+      }
+      if (/(miniProfile|lipi|trackingId|trk=|commentUrn|reactionType)/i.test(url)) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function extractLinks(postEl, postUrl) {
+    const links = [];
+    const seen = new Set();
+    for (const a of postEl?.querySelectorAll?.("a[href]") || []) {
+      if (!isVisibleElement(a)) continue;
+      if (a.closest(".update-components-actor, .feed-shared-actor")) continue;
+      if (a.closest(".feed-shared-social-action-bar, .social-details-social-actions")) continue;
+      if (a.closest("[role='menu'], .artdeco-dropdown__content")) continue;
+      const url = canonicalLinkedInUrl(absoluteUrl(attr(a, "href")));
+      if (!isUsefulLink(url, postUrl)) continue;
+      const label = cleanLinkedInText(attr(a, "aria-label") || clean(a));
+      const key = url.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      links.push(
+        compactObject({
+          url,
+          text: label && !isChromeText(label) ? label.slice(0, 160) : "",
+        })
+      );
+      if (links.length >= 12) break;
+    }
+    return links;
   }
 
   function extractSocialCounts(postEl) {
@@ -379,13 +554,7 @@
       ? `https://www.linkedin.com/feed/update/${urn}/`
       : null;
 
-    const author =
-      firstText(postEl, [
-        ".update-components-actor__title",
-        ".update-components-actor__name",
-        ".update-components-actor__meta a span[dir]",
-        ".feed-shared-actor__title",
-      ]) || null;
+    const author = extractAuthor(postEl) || null;
     const authorHeadline =
       firstText(postEl, [
         ".update-components-actor__description",
@@ -406,15 +575,7 @@
         "time",
       ]) || null;
     let text =
-      firstText(postEl, [
-        ".update-components-text",
-        ".update-components-text .break-words",
-        ".feed-shared-update-v2__description",
-        ".feed-shared-update-v2__commentary",
-        ".feed-shared-inline-show-more-text",
-        ".update-components-update-v2__commentary",
-        "[data-test-id='main-feed-activity-card__commentary']",
-      ]) ||
+      extractPostText(postEl) ||
       firstText(postEl, [
         ".feed-shared-article__description",
         ".update-components-image__image",
@@ -427,10 +588,12 @@
       text = bits.length ? `${PLACEHOLDER}\n${bits.join(" · ")}` : PLACEHOLDER;
     }
 
+    const postUrl = url || location.href;
     const metadata = compactObject({
       urn,
       authorProfileUrl,
       publishedText,
+      links: extractLinks(postEl, postUrl),
       capturedAt: new Date().toISOString(),
       capturedFrom: location.href,
       socialCounts: extractSocialCounts(postEl),

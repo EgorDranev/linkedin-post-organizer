@@ -3,6 +3,7 @@ const CSV_COLUMNS = [
   ["author", "Author"],
   ["authorHeadline", "Author headline"],
   ["text", "Text"],
+  ["links", "Links"],
   ["metadata", "Metadata"],
   ["media", "Media"],
   ["tags", "Tags"],
@@ -25,6 +26,14 @@ export function exportPostsCsv(posts, { filtered = false } = {}) {
     CSV_COLUMNS.map(([key]) => {
       if (key === "tags") return csvCell((post.tags || []).join(", "));
       if (key === "savedAt") return csvCell(new Date(post.savedAt).toISOString());
+      if (key === "links") {
+        return csvCell(
+          (post.metadata?.links || [])
+            .map((item) => item?.url)
+            .filter(Boolean)
+            .join("\n")
+        );
+      }
       if (key === "metadata") return csvCell(JSON.stringify(post.metadata || {}));
       if (key === "media") return csvCell(JSON.stringify(post.media || []));
       return csvCell(post[key]);

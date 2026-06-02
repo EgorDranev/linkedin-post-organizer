@@ -29,6 +29,13 @@ function metadataBits(post) {
   ].filter(Boolean);
 }
 
+function metadataLinks(post) {
+  const links = post.metadata?.links;
+  return Array.isArray(links)
+    ? links.filter((item) => item?.url).slice(0, 4)
+    : [];
+}
+
 export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState("");
@@ -37,6 +44,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const shown = expanded || !long ? post.text : post.text.slice(0, PREVIEW_LEN) + "…";
   const media = Array.isArray(post.media) ? post.media : [];
   const bits = metadataBits(post);
+  const links = metadataLinks(post);
 
   // suggested tags not already accepted
   const pending = post.suggested.filter((s) => !post.tags.includes(s.tag));
@@ -131,6 +139,25 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           {bits.map((bit) => (
             <span key={bit}>{bit}</span>
           ))}
+        </div>
+      )}
+
+      {links.length > 0 && (
+        <div className="link-strip">
+          {links.map((item, index) => {
+            const label = item.text || hostFromUrl(item.url) || "Link";
+            return (
+              <a
+                key={`${item.url}-${index}`}
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                title={item.url}
+              >
+                {label}
+              </a>
+            );
+          })}
         </div>
       )}
 
