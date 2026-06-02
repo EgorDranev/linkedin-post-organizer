@@ -9,25 +9,51 @@
     return autoCapture !== false;
   }
 
+  function hookIfEnabled(autoCapture) {
+    if (!isEnabled(autoCapture)) return;
+    LIS.hookAllPosts();
+  }
+
   function boot() {
-    chrome.storage.local.get([AUTO_CAPTURE_KEY], ({ autoCapture }) => {
-      if (!isEnabled(autoCapture)) return;
-      LIS.hookAllPosts();
+    LIS.safeStorageGet([AUTO_CAPTURE_KEY], ({ autoCapture }) => {
+      hookIfEnabled(autoCapture);
     });
   }
 
   boot();
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local" || !(AUTO_CAPTURE_KEY in changes)) return;
-    if (isEnabled(changes[AUTO_CAPTURE_KEY].newValue)) LIS.hookAllPosts();
-  });
+  function onStorageChanged(changes, area) {
+    try {
+      if (!LIS.contextAlive()) return shutdown();
+      if (area !== "local" || !(AUTO_CAPTURE_KEY in changes)) return;
+      if (isEnabled(changes[AUTO_CAPTURE_KEY].newValue)) LIS.hookAllPosts();
+    } catch {
+      shutdown();
+    }
+  }
+
+  try {
+    chrome.storage.onChanged.addListener(onStorageChanged);
+  } catch {
+    /* context already invalidated at load time — nothing to do */
+  }
 
   const feedObserver = new MutationObserver(() => {
-    chrome.storage.local.get([AUTO_CAPTURE_KEY], ({ autoCapture }) => {
-      if (!isEnabled(autoCapture)) return;
-      LIS.hookAllPosts();
+    if (!LIS.contextAlive()) return shutdown();
+    LIS.safeStorageGet([AUTO_CAPTURE_KEY], ({ autoCapture }) => {
+      hookIfEnabled(autoCapture);
     });
   });
   feedObserver.observe(document.body, { childList: true, subtree: true });
+
+  function shutdown() {
+    feedObserver.disconnect();
+    try {
+      chrome.storage.onChanged.removeListener(onStorageChanged);
+    } catch {
+      /* context already gone */
+    }
+  }
+
+  LIS.onContextInvalidated(shutdown);
 })();
