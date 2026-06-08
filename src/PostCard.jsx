@@ -15,6 +15,20 @@ function hostFromUrl(url) {
   }
 }
 
+// "https://www.linkedin.com/feed/…" -> "linkedin.com/feed". Host plus the first
+// path segment is enough to tell the feed from a profile, a search, or saved.
+function sourceLabel(url) {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const segment = parsed.pathname.split("/").filter(Boolean)[0] || "";
+    return segment ? `${host}/${segment}` : host;
+  } catch {
+    return hostFromUrl(url);
+  }
+}
+
 function mediaLabel(item) {
   if (item.title) return item.title;
   if (item.type === "image") return item.alt || "Image";
@@ -311,6 +325,12 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const headline = (post.authorHeadline || post.metadata?.companyInfo || "").trim();
   const profileUrl = post.metadata?.authorProfileUrl || "";
 
+  // Where the post was saved from — the feed/profile/search/saved-list page the
+  // user was on at capture time. Only worth a link when it's a different
+  // destination than the permalink the "Open original" icon already covers.
+  const capturedFrom = post.metadata?.capturedFrom || "";
+  const savedFrom = capturedFrom && capturedFrom !== post.url ? capturedFrom : "";
+
   // Type signalling. The badge labels the post; the hero affordance (play /
   // image-count) is the at-a-glance cue while scanning the grid.
   const postType = post.metadata?.postType || "";
@@ -492,6 +512,21 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               <span className="card-source-name">{source}</span>
               <span className="meta-sep" aria-hidden="true">·</span>
               <span>Saved {savedDate}</span>
+              {savedFrom && (
+                <>
+                  <span className="meta-sep" aria-hidden="true">·</span>
+                  <a
+                    className="card-source-link"
+                    href={savedFrom}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`Open where it was saved from — ${capturedFrom}`}
+                  >
+                    from {sourceLabel(savedFrom)}
+                    <ExternalIcon width={11} height={11} />
+                  </a>
+                </>
+              )}
             </span>
           </div>
           {!hasMedia && renderActions("inline")}

@@ -736,13 +736,26 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 .card-source {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 2px 6px;
   min-width: 0;
   color: var(--muted);
   font-size: var(--fs-xs);
 }
 .card-source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .meta-sep { opacity: 0.5; }
+/* "saved from" — opens the page the post was captured from */
+.card-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: var(--r-xs);
+}
+.card-source-link svg { flex: 0 0 auto; opacity: 0.7; }
+.card-source-link:hover { color: var(--accent); text-decoration: underline; }
+.card-source-link:hover svg { opacity: 1; }
 
 .card-title {
   display: -webkit-box;
