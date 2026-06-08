@@ -7,6 +7,47 @@ import { BrowseControls } from "./BrowseControls.jsx";
 import { exportPostsCsv } from "./exportCsv.js";
 import { CollectionSidebar } from "./CollectionSidebar.jsx";
 
+const ICON = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+};
+
+const BookmarkMark = () => (
+  <svg width="18" height="18" {...ICON} strokeWidth={2}>
+    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+  </svg>
+);
+const DownloadIcon = () => (
+  <svg width="15" height="15" {...ICON}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="M7 10l5 5 5-5" />
+    <path d="M12 15V3" />
+  </svg>
+);
+const LockIcon = () => (
+  <svg width="15" height="15" {...ICON}>
+    <rect x="3" y="11" width="18" height="11" rx="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+);
+const InboxIcon = () => (
+  <svg width="22" height="22" {...ICON}>
+    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+  </svg>
+);
+const SearchOffIcon = () => (
+  <svg width="22" height="22" {...ICON}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.3-4.3" />
+  </svg>
+);
+
 export default function App() {
   const [authed, setAuthed] = useState(null); // null = unknown, false = locked, true = ok
   const [posts, setPosts] = useState([]);
@@ -163,28 +204,37 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>LinkedIn Saver</h1>
-        <div className="topbar-right">
-          <span className="count">
-            {filtering ? `${filtered.length} of ${posts.length}` : `${posts.length} saved`}
-          </span>
-          {posts.length > 0 && (
-            <button
-              className="link export"
-              onClick={() => exportPostsCsv(filtered, { filtered: filtering })}
-              disabled={filtered.length === 0}
-            >
-              {exportLabel}
+        <div className="topbar-inner">
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true">
+              <BookmarkMark />
+            </span>
+            <h1>LinkedIn Saver</h1>
+          </div>
+          <div className="topbar-right">
+            <span className="count">
+              {filtering ? `${filtered.length} of ${posts.length}` : `${posts.length} saved`}
+            </span>
+            {posts.length > 0 && (
+              <button
+                className="topbar-btn export"
+                onClick={() => exportPostsCsv(filtered, { filtered: filtering })}
+                disabled={filtered.length === 0}
+              >
+                <DownloadIcon />
+                {exportLabel}
+              </button>
+            )}
+            <button className="topbar-btn logout" onClick={logout}>
+              <LockIcon />
+              Lock
             </button>
-          )}
-          <button className="link logout" onClick={logout}>
-            Lock
-          </button>
+          </div>
         </div>
       </header>
 
-      <div style={{ display: 'flex', gap: '20px' }}>
-        <div style={{ minWidth: '250px' }}>
+      <main className="app-body">
+        <aside className="sidebar-col">
           <CollectionSidebar
             collections={collections}
             selectedCollection={selectedCollection}
@@ -193,9 +243,9 @@ export default function App() {
             onEditCollection={onCollectionEdited}
             onDeleteCollection={onCollectionDeleted}
           />
-        </div>
+        </aside>
 
-        <div style={{ flex: 1 }}>
+        <div className="content-col">
           <AddForm onSaved={onSaved} />
 
           {posts.length > 0 && (
@@ -209,22 +259,38 @@ export default function App() {
             />
           )}
 
-          {loading && <p className="muted">Loading…</p>}
-          {error && <p className="error">Can’t reach the server: {error}</p>}
+          {loading && (
+            <div className="state">
+              <span className="state-icon"><InboxIcon /></span>
+              <p>Loading your saved posts…</p>
+            </div>
+          )}
+          {error && (
+            <div className="state">
+              <span className="state-icon"><SearchOffIcon /></span>
+              <p className="error">Can’t reach the server: {error}</p>
+            </div>
+          )}
 
           {!loading && !error && posts.length === 0 && (
-            <p className="muted empty">
-              No saved posts yet. Paste one above, or save a post on LinkedIn with
-              the browser extension connected.
-            </p>
+            <div className="state">
+              <span className="state-icon"><InboxIcon /></span>
+              <p>
+                No saved posts yet. Paste one above, or save a post on LinkedIn
+                with the browser extension connected.
+              </p>
+            </div>
           )}
 
           {!loading && !error && posts.length > 0 && filtered.length === 0 && (
-            <p className="muted empty">No posts match these filters.</p>
+            <div className="state">
+              <span className="state-icon"><SearchOffIcon /></span>
+              <p>No posts match these filters.</p>
+            </div>
           )}
 
           {toReview.length > 0 && (
-            <section>
+            <section className="section">
               <h2 className="section-title">
                 To review <span className="badge">{toReview.length}</span>
               </h2>
@@ -244,7 +310,7 @@ export default function App() {
           )}
 
           {filed.length > 0 && (
-            <section>
+            <section className="section">
               <h2 className="section-title">Filed</h2>
               {filed.map((p) => (
                 <PostCard
@@ -261,7 +327,7 @@ export default function App() {
             </section>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

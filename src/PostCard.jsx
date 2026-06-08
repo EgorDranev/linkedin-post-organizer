@@ -218,6 +218,12 @@ const ClockIcon = (props) => (
   </svg>
 );
 
+const FolderIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2z" />
+  </svg>
+);
+
 export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [], collections = [], onCollectionChange }) {
   const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -455,12 +461,13 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           
           {/* Collections dropdown */}
           <div className="collection-dropdown-container">
-            <button 
+            <button
               className="collection-dropdown-btn"
               onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}
               title="Add to collection"
+              aria-label="Add to collection"
             >
-              📁
+              <FolderIcon width={15} height={15} />
             </button>
             
             {showCollectionDropdown && (

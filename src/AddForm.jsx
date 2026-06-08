@@ -35,31 +35,57 @@ export function AddForm({ onSaved }) {
   if (!open) {
     return (
       <button className="add-toggle" onClick={() => setOpen(true)}>
-        + Paste a post
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5v14" />
+          <path d="M5 12h14" />
+        </svg>
+        Paste a post
       </button>
     );
   }
 
   return (
     <form className="add-form" onSubmit={submit}>
-      <textarea
-        autoFocus
-        rows={5}
-        placeholder="Paste the post text here…"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
+      <div className="field">
+        <label htmlFor="add-text">Post text</label>
+        <textarea
+          id="add-text"
+          autoFocus
+          rows={5}
+          placeholder="Paste the post text here…"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </div>
       <div className="add-row">
-        <input
-          placeholder="Author (optional)"
-          value={author}
-          onChange={(e) => setAuthor(e.target.value)}
-        />
-        <input
-          placeholder="LinkedIn URL (optional)"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
+        <div className="field">
+          <label htmlFor="add-author">Author</label>
+          <input
+            id="add-author"
+            placeholder="Optional"
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="add-url">LinkedIn URL</label>
+          <input
+            id="add-url"
+            placeholder="Optional"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+        </div>
       </div>
       {err && <p className="error">{err}</p>}
       <div className="add-actions">
