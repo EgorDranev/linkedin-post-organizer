@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "./api.js";
 
-const DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/gi;
+const DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+(?!(?:md)\b)[a-z]{2,}(?:\/\S*)?/gi;
 const SECTION_START_RE =
   /(?:^|\s)(\d{1,2})\.\s+([A-Z][^?!.]{8,140}\?)(?=\s+[A-Z0-9]|$)/g;
 
@@ -400,10 +400,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const primaryThumb =
     primaryMedia?.thumbnailUrl ||
     (primaryMedia?.type === "image" ? primaryMedia?.url : "");
-  const hasMedia = Boolean(primaryThumb);
   const author = deriveAuthor(post);
-  const title = previewTitle(displayBlocks, media, post);
-  const excerpt = previewExcerpt(displayBlocks, title) || displayText;
   const source = hostFromUrl(post.url) || hostFromUrl(links[0]?.url) || "LinkedIn";
   const monogram = (author || source || "L").trim().charAt(0).toUpperCase();
   const savedDate = new Date(post.savedAt).toLocaleDateString(undefined, {
@@ -506,10 +503,8 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     }
   };
 
-  // Same three actions on every card; placement differs (overlaid on the media
-  // hero vs inline in the header of a text-only card).
-  const renderActions = (variant) => (
-    <div className={`card-actions card-actions--${variant}`}>
+  const renderActions = () => (
+    <div className="card-actions">
       {post.url && (
         <a
           href={post.url}
@@ -542,32 +537,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   );
 
   return (
-    <article className={`card ${hasMedia ? "has-media" : "is-text"}`}>
-      {hasMedia && (
-        <div className="card-preview">
-          <img
-            src={primaryThumb}
-            alt={primaryMedia?.alt || mediaLabel(primaryMedia)}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-          <div className="card-preview-fade" />
-          <TypeBadge meta={typeMeta} variant="overlay" />
-          {isVideo && (
-            <span className="media-affordance media-affordance--play" aria-hidden="true">
-              <PlayIcon width={24} height={24} />
-            </span>
-          )}
-          {!isVideo && imageCount > 1 && (
-            <span className="media-affordance media-affordance--count" title={`${imageCount} images`}>
-              <ImagesIcon width={12} height={12} />
-              {imageCount}
-            </span>
-          )}
-          {renderActions("overlay")}
-        </div>
-      )}
-
+    <article className="card linkedmash-card">
       <div className="card-content">
         <div className="card-id">
           <span className="card-avatar" aria-hidden="true">
@@ -590,20 +560,49 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                   {author || "Unknown author"}
                 </span>
               )}
-              {!hasMedia && <TypeBadge meta={typeMeta} variant="inline" />}
             </div>
-            {headline && <span className="card-headline">{headline}</span>}
             <span className="card-source">
+              {headline && <span className="card-headline">{headline}</span>}
+              {headline && <span className="meta-sep" aria-hidden="true">·</span>}
               <span className="card-source-name">{source}</span>
               <span className="meta-sep" aria-hidden="true">·</span>
               <span>Saved {savedDate}</span>
             </span>
           </div>
-          {!hasMedia && renderActions("inline")}
+          {renderActions()}
         </div>
 
-        <h3 className="card-title">{title}</h3>
-        {excerpt && <p className="card-excerpt">{excerpt}</p>}
+        <div className="card-post-text">
+          {displayBlocks.length > 0 ? (
+            displayBlocks.map((block, index) => (
+              <p
+                key={`${block.text.slice(0, 32)}-${index}`}
+                className={`card-text-block card-text-block--${block.kind}`}
+              >
+                {block.text}
+              </p>
+            ))
+          ) : (
+            <p className="card-text-empty">No text was captured for this post.</p>
+          )}
+        </div>
+
+        {(typeMeta || primaryThumb) && (
+          <div className="card-attachments">
+            <TypeBadge meta={typeMeta} variant="inline" />
+            {primaryThumb && (
+              <button
+                className="card-media-pill"
+                type="button"
+                onClick={() => setReaderOpen(true)}
+                title="View captured media"
+              >
+                {isVideo ? <PlayIcon width={13} height={13} /> : <ImagesIcon width={13} height={13} />}
+                {isVideo ? "Video" : imageCount > 1 ? `${imageCount} images` : mediaLabel(primaryMedia)}
+              </button>
+            )}
+          </div>
+        )}
 
         {hasStats && (
         <div className="card-stats">
