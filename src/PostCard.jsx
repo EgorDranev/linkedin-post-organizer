@@ -6,26 +6,25 @@ const DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/gi;
 const SECTION_START_RE =
   /(?:^|\s)(\d{1,2})\.\s+([A-Z][^?!.]{8,140}\?)(?=\s+[A-Z0-9]|$)/g;
 
+// LinkedIn sometimes leads the actor block with presence text instead of the
+// name ("Status is reachable"); the real "Name • <degree> <role>" follows on the
+// next line. Never a real author, never real body.
+const PRESENCE_RE = /^(?:status is\s+)?(?:reachable|online|offline|away)$/i;
+
+// A bookmarked article saved from the "Saved" list rather than a feed post. The
+// title trails the marker; the body is usually empty.
+const SAVED_LINK_RE = /^saved link\s*[•·]\s*/i;
+
+// Degree-of-connection token ("1st", "2nd", "3rd") that prefixes the role in a
+// "Name • <degree> <role>" line — dropped so the headline reads as the role.
+const DEGREE_RE = /^(?:1st|2nd|3rd|\d+(?:st|nd|rd|th))\b[\s•·,–-]*/i;
+
 function hostFromUrl(url) {
   if (!url) return "";
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return "";
-  }
-}
-
-// "https://www.linkedin.com/feed/…" -> "linkedin.com/feed". Host plus the first
-// path segment is enough to tell the feed from a profile, a search, or saved.
-function sourceLabel(url) {
-  if (!url) return "";
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.replace(/^www\./, "");
-    const segment = parsed.pathname.split("/").filter(Boolean)[0] || "";
-    return segment ? `${host}/${segment}` : host;
-  } catch {
-    return hostFromUrl(url);
   }
 }
 
@@ -66,7 +65,8 @@ function authorFromTitlePattern(value) {
 // The card may show posts saved before the extension inferred authors, so the
 // stored author can be null. Recover it from data already on the post.
 function deriveAuthor(post) {
-  if (post.author && post.author.trim()) return post.author.trim();
+  const stated = post.author && post.author.trim();
+  if (stated && !PRESENCE_RE.test(stated)) return stated;
 
   const fromProfile = nameFromProfileUrl(post.metadata?.authorProfileUrl);
   if (fromProfile) return fromProfile;
@@ -169,6 +169,97 @@ function primaryPreviewMedia(media) {
     media.find((item) => item.title || item.description) ||
     null
   );
+}
+
+// Split a captured "Name • <degree> <role>" line into its parts. Used to recover
+// the real identity when presence text displaced the name in innerText.
+function splitNameRole(line) {
+  const parts = String(line || "").split(/\s+[•·]\s+/);
+  if (parts.length < 2) return { author: "", headline: "" };
+  return {
+    author: parts[0].trim(),
+    headline: parts.slice(1).join(" • ").replace(DEGREE_RE, "").trim(),
+  };
+}
+
+// Viewer chrome and engagement counters LinkedIn folds into a post's innerText —
+// never part of the body. Engagement totals already live in the reader's meta
+// block, so the body shouldn't repeat them.
+function isNoiseLine(line) {
+  const t = line.trim();
+  if (!t) return false;
+  if (/^…?\s*(?:see|show)\s+more$/i.test(t)) return true;
+  if (/^activate to view larger image$/i.test(t)) return true;
+  if (/^play$/i.test(t)) return true;
+  if (t.length > 80 || !/\d/.test(t)) return false;
+  // Counter line ("1,234 reactions · 56 comments · 7 reposts", "👍 1.2K"): once
+  // counts (incl. K/M) and engagement nouns are stripped, only separators or
+  // reaction glyphs remain.
+  const residue = t
+    .replace(/[\d.,]+\s*[km]?\b/gi, "")
+    .replace(/\b(?:reactions?|likes?|comments?|reposts?|shares?)\b/gi, "")
+    .replace(/[^\p{L}]/gu, "");
+  if (residue) return false;
+  // Require a counter signal — an engagement noun, a bullet, or a reaction glyph
+  // — so a lone number such as a year ("2024") isn't mistaken for chrome.
+  return (
+    /(?:reactions?|likes?|comments?|reposts?|shares?|[•·])/i.test(t) ||
+    /[^\p{L}\p{N}\s.,]/u.test(t)
+  );
+}
+
+// Reader-mode parse: resolve LinkedIn's innerText quirks into a clean identity +
+// body. Returns the recovered author/headline, the cleaned text blocks, and
+// whether the entry is a bookmarked "Saved" article rather than a feed post.
+function parseReaderPost(post) {
+  const statedPresence = PRESENCE_RE.test((post.author || "").trim());
+  let author = deriveAuthor(post);
+  let headline = (post.authorHeadline || post.metadata?.companyInfo || "").trim();
+  let isSavedArticle = false;
+  let identityLifted = false;
+  const bodyLines = [];
+
+  for (const raw of String(post.text || "").split("\n")) {
+    const line = raw.trim();
+    if (!line) {
+      bodyLines.push("");
+      continue;
+    }
+
+    // Presence/status text is never an author and never body.
+    if (PRESENCE_RE.test(line)) continue;
+
+    // "Saved link • Article title" — flag it; keep the title as the body lead.
+    if (SAVED_LINK_RE.test(line)) {
+      isSavedArticle = true;
+      const title = line.replace(SAVED_LINK_RE, "").trim();
+      if (title) bodyLines.push(title);
+      continue;
+    }
+
+    // When presence text displaced the name, the first "Name • <degree> <role>"
+    // line carries the real identity — lift it into the header, drop from body.
+    if (statedPresence && !identityLifted) {
+      const id = splitNameRole(line);
+      if (id.author) {
+        identityLifted = true;
+        if (!author) author = id.author;
+        if (id.headline && !headline) headline = id.headline;
+        continue;
+      }
+    }
+
+    if (isNoiseLine(line)) continue;
+    bodyLines.push(line);
+  }
+
+  const bodyText = bodyLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return {
+    author: author || "Unknown author",
+    headline,
+    isSavedArticle,
+    blocks: textBlocks(bodyText),
+  };
 }
 
 // Inline icon set (no icon-library dependency). Shared stroke/weight keeps the
@@ -301,7 +392,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
 
   const displayText = useMemo(() => readableText(post.text), [post.text]);
   const displayBlocks = useMemo(() => textBlocks(displayText), [displayText]);
-  const readerBlocks = useMemo(() => textBlocks(post.text), [post.text]);
+  const reader = useMemo(() => parseReaderPost(post), [post]);
   const media = Array.isArray(post.media) ? post.media : [];
   const links = metadataLinks(post);
   const readableMedia = media.filter((item) => item.thumbnailUrl || item.url);
@@ -324,12 +415,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   // link makes the identity tappable when we captured it.
   const headline = (post.authorHeadline || post.metadata?.companyInfo || "").trim();
   const profileUrl = post.metadata?.authorProfileUrl || "";
-
-  // Where the post was saved from — the feed/profile/search/saved-list page the
-  // user was on at capture time. Only worth a link when it's a different
-  // destination than the permalink the "Open original" icon already covers.
-  const capturedFrom = post.metadata?.capturedFrom || "";
-  const savedFrom = capturedFrom && capturedFrom !== post.url ? capturedFrom : "";
 
   // Type signalling. The badge labels the post; the hero affordance (play /
   // image-count) is the at-a-glance cue while scanning the grid.
@@ -512,21 +597,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               <span className="card-source-name">{source}</span>
               <span className="meta-sep" aria-hidden="true">·</span>
               <span>Saved {savedDate}</span>
-              {savedFrom && (
-                <>
-                  <span className="meta-sep" aria-hidden="true">·</span>
-                  <a
-                    className="card-source-link"
-                    href={savedFrom}
-                    target="_blank"
-                    rel="noreferrer"
-                    title={`Open where it was saved from — ${capturedFrom}`}
-                  >
-                    from {sourceLabel(savedFrom)}
-                    <ExternalIcon width={11} height={11} />
-                  </a>
-                </>
-              )}
             </span>
           </div>
           {!hasMedia && renderActions("inline")}
@@ -669,8 +739,11 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           <div className="reader-modal" onMouseDown={(event) => event.stopPropagation()}>
             <div className="reader-head">
               <div>
-                <strong>{author || "Unknown author"}</strong>
-                {post.authorHeadline && <span>{post.authorHeadline}</span>}
+                <strong>{reader.author}</strong>
+                {reader.headline && <span>{reader.headline}</span>}
+                {reader.isSavedArticle && (
+                  <span className="reader-flag">Saved article</span>
+                )}
               </div>
               <button
                 className="icon-btn reader-close"
@@ -728,14 +801,22 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 </div>
                 
                 <div className="reader-text">
-                  {readerBlocks.map((block, index) => (
-                    <p
-                      key={`${block.text.slice(0, 32)}-${index}`}
-                      className={`text-block text-block--${block.kind}`}
-                    >
-                      {block.text}
+                  {reader.blocks.length > 0 ? (
+                    reader.blocks.map((block, index) => (
+                      <p
+                        key={`${block.text.slice(0, 32)}-${index}`}
+                        className={`text-block text-block--${block.kind}`}
+                      >
+                        {block.text}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="reader-empty">
+                      {reader.isSavedArticle
+                        ? "Bookmarked article — no post text was captured."
+                        : "No text was captured for this post."}
                     </p>
-                  ))}
+                  )}
                 </div>
               </section>
 
