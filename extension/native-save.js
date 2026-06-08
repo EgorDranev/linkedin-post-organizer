@@ -2,7 +2,6 @@
 (function () {
   const LIS = (globalThis.LIS = globalThis.LIS || {});
 
-  const HOOK_FLAG = "data-lis-native-hook";
   const MENU_HOOK_FLAG = "data-lis-menu-hook";
   const CONTEXT_TTL_MS = 20000;
   const recentContext = { postEl: null, at: 0 };
@@ -228,12 +227,25 @@
     }
   }
 
-  function attachSaveObserver(postEl) {
-    if (postEl.hasAttribute(HOOK_FLAG)) return;
-    postEl.setAttribute(HOOK_FLAG, "1");
+  // postEl -> { btn, observer } for the Save button we're currently watching.
+  // Keyed weakly so detached posts (feed recycling) drop out on GC.
+  const observedPosts = new WeakMap();
 
+  function attachSaveObserver(postEl) {
+    // Fast path: already watching a live button on this post. Avoids re-scanning
+    // on every feed mutation once a post is hooked.
+    const existing = observedPosts.get(postEl);
+    if (existing && existing.btn.isConnected) return;
+
+    // The social bar (and its Save button) is lazy-rendered, so a freshly
+    // injected feed post often has no button yet on the first pass. Don't flag
+    // the post as done — keep retrying on later mutations until it appears.
     const btn = LIS.findSaveButton(postEl);
     if (!btn) return;
+
+    // The button we were watching was replaced by an in-place re-render
+    // (auto-refreshing feed). Drop the stale observer before rebinding.
+    if (existing) existing.observer.disconnect();
 
     let wasSaved = isSavedState(btn);
     const observer = new MutationObserver(() => {
@@ -246,6 +258,7 @@
       attributes: true,
       attributeFilter: ["aria-label", "aria-pressed", "class"],
     });
+    observedPosts.set(postEl, { btn, observer });
   }
 
   LIS.hookPost = function hookPost(postEl) {
