@@ -76,12 +76,25 @@ function metadataLinks(post) {
     : [];
 }
 
+// LinkedIn "fancy" headers (𝗛𝗨𝗦𝗧𝗟𝗘) are captured glyph-by-glyph and arrive as
+// single letters separated by spaces ("H U S T L E B A D G E R"). Collapse any
+// run of 4+ standalone single letters back into a word. The trailing \b plus
+// backtracking stops the run at the last single-letter token, so it never eats
+// the first letter of a following real word ("…U I L D Build" → "UILD Build").
+function collapseSpacedCaps(text) {
+  return text.replace(/\b[A-Za-z0-9](?: [A-Za-z0-9]){3,}\b/g, (run) =>
+    run.replace(/ /g, "")
+  );
+}
+
 function readableText(text) {
-  let clean = String(text || "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\bView image\b\s*/gi, "")
-    .trim();
+  let clean = collapseSpacedCaps(
+    String(text || "")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\bView image\b\s*/gi, "")
+      .trim()
+  );
 
   clean = clean
     .replace(/\s+(?=\d{1,2}\.\s+[A-Z])/g, "\n\n")
@@ -183,13 +196,6 @@ const TrashIcon = (props) => (
   </svg>
 );
 
-const UserIcon = (props) => (
-  <svg width="16" height="16" {...ICON_BASE} {...props}>
-    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-    <circle cx="12" cy="7" r="4" />
-  </svg>
-);
-
 const HeartIcon = (props) => (
   <svg width="16" height="16" {...ICON_BASE} {...props}>
     <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z" />
@@ -224,6 +230,56 @@ const FolderIcon = (props) => (
   </svg>
 );
 
+// Filled triangle reads as "play" at small sizes; the others share ICON_BASE.
+const PlayIcon = (props) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+    <path d="M8 5v14l11-7z" />
+  </svg>
+);
+
+const FileIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z" />
+  </svg>
+);
+
+const ImagesIcon = (props) => (
+  <svg width="16" height="16" {...ICON_BASE} {...props}>
+    <rect x="3" y="3" width="14" height="14" rx="2" />
+    <path d="M21 7v12a2 2 0 0 1-2 2H7" />
+  </svg>
+);
+
+// postType (from extract.js) → how it reads on the card face. Types not listed
+// (text, media) carry no badge — a plain text post needs no label.
+const POST_TYPE_META = {
+  video: { label: "Video", Icon: PlayIcon },
+  external_video: { label: "Video", Icon: PlayIcon },
+  document: { label: "Document", Icon: FileIcon },
+  article: { label: "Article", Icon: ExternalIcon },
+  image_with_article: { label: "Article", Icon: ExternalIcon },
+  reshare: { label: "Repost", Icon: RepostIcon },
+  poll: { label: "Poll" },
+  event: { label: "Event" },
+  newsletter: { label: "Newsletter" },
+  celebration: { label: "Celebration" },
+  image: { label: "Photo" },
+};
+
+// Small type pill. `overlay` sits on the media hero (light-on-dark); `inline`
+// rides next to the author on text-only cards (neutral chip).
+function TypeBadge({ meta, variant }) {
+  if (!meta) return null;
+  const { label, Icon } = meta;
+  return (
+    <span className={`type-badge type-badge--${variant}`}>
+      {Icon ? <Icon width={12} height={12} /> : null}
+      {label}
+    </span>
+  );
+}
+
 export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [], collections = [], onCollectionChange }) {
   const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -250,13 +306,40 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     day: "numeric",
   });
 
-  // Engagement + provenance surfaced as compact stats (full detail lives in
-  // the reader). Counts are only shown when present.
+  // Provenance: who/what. Headline credits the author's role/company; profile
+  // link makes the identity tappable when we captured it.
+  const headline = (post.authorHeadline || post.metadata?.companyInfo || "").trim();
+  const profileUrl = post.metadata?.authorProfileUrl || "";
+
+  // Type signalling. The badge labels the post; the hero affordance (play /
+  // image-count) is the at-a-glance cue while scanning the grid.
+  const postType = post.metadata?.postType || "";
+  const typeMeta = POST_TYPE_META[postType] || null;
+  const isVideo =
+    postType === "video" ||
+    postType === "external_video" ||
+    primaryMedia?.type === "video";
+  const imageCount = media.filter(
+    (item) => item.type === "image" && (item.url || item.thumbnailUrl)
+  ).length;
+
+  // The post's own hashtags — recognition aid, distinct from the user's tags.
+  // One tap adopts a topic as a tag. Drop any already accepted.
+  const topicTags = (
+    Array.isArray(post.metadata?.hashtags) ? post.metadata.hashtags : []
+  )
+    .map((tag) => tag.replace(/^#/, "").trim())
+    .filter((tag) => tag && !post.tags.includes(tag))
+    .slice(0, 6);
+
+  // Engagement surfaced as compact stats (full detail lives in the reader).
+  // Counts are only shown when present.
   const social = post.metadata?.socialCounts || {};
   const reactions = social.reactions;
   const comments = social.comments;
   const reposts = social.reposts;
   const publishedText = post.metadata?.publishedText || "";
+  const hasStats = Boolean(reactions || comments || reposts || publishedText);
 
   useEffect(() => {
     if (!readerOpen) return undefined;
@@ -364,33 +447,61 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
             referrerPolicy="no-referrer"
           />
           <div className="card-preview-fade" />
+          <TypeBadge meta={typeMeta} variant="overlay" />
+          {isVideo && (
+            <span className="media-affordance media-affordance--play" aria-hidden="true">
+              <PlayIcon width={24} height={24} />
+            </span>
+          )}
+          {!isVideo && imageCount > 1 && (
+            <span className="media-affordance media-affordance--count" title={`${imageCount} images`}>
+              <ImagesIcon width={12} height={12} />
+              {imageCount}
+            </span>
+          )}
           {renderActions("overlay")}
         </div>
       )}
 
       <div className="card-content">
-        <div className="card-head">
-          {!hasMedia && (
-            <span className="card-monogram" aria-hidden="true">
-              {monogram}
-            </span>
-          )}
-          <span className="card-source">
-            <span className="card-source-name">{source}</span>
-            <span className="meta-sep" aria-hidden="true">·</span>
-            <span>{savedDate}</span>
+        <div className="card-id">
+          <span className="card-avatar" aria-hidden="true">
+            {monogram}
           </span>
+          <div className="card-id-main">
+            <div className="card-id-line">
+              {profileUrl ? (
+                <a
+                  className="card-author-name"
+                  href={profileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={author || "Unknown author"}
+                >
+                  {author || "Unknown author"}
+                </a>
+              ) : (
+                <span className="card-author-name" title={author || "Unknown author"}>
+                  {author || "Unknown author"}
+                </span>
+              )}
+              {!hasMedia && <TypeBadge meta={typeMeta} variant="inline" />}
+            </div>
+            {headline && <span className="card-headline">{headline}</span>}
+            <span className="card-source">
+              <span className="card-source-name">{source}</span>
+              <span className="meta-sep" aria-hidden="true">·</span>
+              <span>Saved {savedDate}</span>
+            </span>
+          </div>
           {!hasMedia && renderActions("inline")}
         </div>
 
         <h3 className="card-title">{title}</h3>
         {excerpt && <p className="card-excerpt">{excerpt}</p>}
 
+        {hasStats && (
         <div className="card-stats">
-          <span className="card-stat card-author" title={author || "Unknown author"}>
-            <UserIcon width={14} height={14} />
-            {author || "Unknown"}
-          </span>
           {reactions ? (
             <span className="card-stat" title={`${reactions} reactions`}>
               <HeartIcon width={14} height={14} />
@@ -416,6 +527,22 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
             </span>
           ) : null}
         </div>
+        )}
+
+        {topicTags.length > 0 && (
+          <div className="card-topics">
+            {topicTags.map((tag) => (
+              <button
+                key={tag}
+                className="topic-chip"
+                onClick={() => acceptTag(tag)}
+                title="Add as a tag"
+              >
+                #{tag}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="tags">
           {post.tags.map((t) => (

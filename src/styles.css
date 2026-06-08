@@ -696,19 +696,42 @@ textarea:focus {
 
 /* content */
 .card-content { padding: var(--space-4); }
-.card-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
-.card-monogram {
+
+/* identity header — author is the primary recognition key */
+.card-id { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.card-avatar {
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-full);
   font-size: var(--fs-base);
   font-weight: 700;
-  color: var(--mono-ink);
-  background: var(--mono-soft);
-  border: 1px solid var(--mono-border);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+}
+.card-id-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.card-id-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.card-author-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-decoration: none;
+}
+a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
+.card-headline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
 }
 .card-source {
   display: flex;
@@ -756,7 +779,90 @@ textarea:focus {
 }
 .card-stat { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
 .card-stat svg { flex: 0 0 auto; opacity: 0.85; }
-.card-author { color: var(--ink-2); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* post-type pill — labels what kind of post this is */
+.type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  border-radius: var(--r-full);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+}
+.type-badge svg { flex: 0 0 auto; }
+.type-badge--inline {
+  padding: 3px 8px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+}
+.type-badge--overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  padding: 4px 9px;
+  color: #fff;
+  background: rgba(16, 24, 40, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* hero affordance — the at-a-glance "this is a video / a gallery" cue */
+.media-affordance { position: absolute; z-index: 1; }
+.media-affordance--play {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding-left: 3px; /* optical centering of the triangle */
+  border-radius: var(--r-full);
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: var(--shadow-md);
+}
+.media-affordance--count {
+  bottom: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: var(--r-full);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(16, 24, 40, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* the post's own hashtags — read-only recognition aid; click adopts as a tag */
+.card-topics { display: flex; flex-wrap: wrap; gap: var(--space-1) 10px; margin-top: var(--space-3); }
+.topic-chip {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--r-xs);
+  transition: color 0.12s ease;
+}
+.topic-chip:hover { color: var(--accent); text-decoration: underline; }
 
 /* =====================================================================
    Tags / chips
