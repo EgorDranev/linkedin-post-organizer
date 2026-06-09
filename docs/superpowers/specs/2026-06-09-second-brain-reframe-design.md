@@ -86,14 +86,22 @@ this counts."
 Reuse the existing `posts.status` field to give the loop visible *progress*. No new
 status values, no migration:
 
-- `review` → labelled **"To organize"** (captured, not yet filed)
-- accepted / kept → labelled **"Organized"** (filed, reusable)
-- **"Distilled" is derived, not stored** — a post counts as distilled when it has a
-  non-empty takeaway/summary. No new column.
+The app already has exactly two statuses — `review` and `filed` — rendered as the
+sections **"To review"** and **"Filed"** (`src/App.jsx`). The reframe relabels them to
+the loop; it does **not** add states or migrate:
 
-Yields a quiet completion signal, e.g. *"142 captured · 38 organized · 12 distilled."*
-This is BASB's knowledge→action "completion" feeling made visible — and it gently
-motivates working the pile without nagging.
+- `review` → section relabelled **"To organize"** (captured, not yet filed)
+- `filed` → section relabelled **"Organized"** (filed, reusable) — "Filed" is also
+  acceptable; pick one and keep it consistent
+- **"Distilled" is loop *education*, not a live metric (yet).** Posts carry no
+  takeaway/summary field in the live model (`hydrate()` in `api/_lib/db.js`), so there is
+  nothing to count. The fourth verb is *taught* in the Loop card, but the live distilled
+  counter is deferred to the §8 distill option.
+
+Yields a quiet completion signal from data that actually exists, e.g.
+*"142 captured · 27 to organize · 38 organized."* This is BASB's knowledge→action
+"completion" feeling made visible — and it gently motivates working the pile without
+nagging.
 
 ### 5.2 The one new component — the **Loop card**
 
@@ -112,18 +120,25 @@ once dismissed. This is the **only** net-new component in scope.
 
 ### 5.3 Copy changes (plain-language; "second brain" supports, never headline)
 
-- **Header / hero** — operator pain headline stays primary; second-brain line supports:
-  - Primary: *"Find the post you saved three weeks ago."*
-  - Support: *"Your second brain for LinkedIn — capture, organize, reuse."*
-- **Empty library:** *"Nothing captured yet. The moment a post is worth keeping, hit
-  LinkedIn's Save — it lands here, out of your head."*
-- **Empty search:** *"Nothing matches. Your second brain only knows what you've
-  captured."*
-- **Queue / `review` label:** *"To organize."* The accept/file action reads *"Organize"*
-  / *"File it."*
-- **Export CTA:** *"Reuse →"* / *"Build a brief"* instead of a bare "Export."
-- **Collections create:** sub-label nudges *use* over *topic* — *"Where will you use
-  this?"*
+- **Brand bar (no hero exists today — just the compact topbar):** keep the "LinkedIn
+  Saver" wordmark; add a small supporting tagline beside/under it —
+  *"Your second brain for LinkedIn."* The operator pain line
+  (*"Find the post you saved three weeks ago"*) lives in marketing/landing copy, not the
+  app chrome, since the app has no hero band to carry it.
+- **Empty library** (`posts.length === 0` state): *"Nothing captured yet. The moment a
+  post is worth keeping, hit LinkedIn's Save — it lands here, out of your head."*
+- **Empty search** (`filtered.length === 0` state): *"Nothing matches. Your second brain
+  only knows what you've captured."*
+- **Section headers:** "To review" → *"To organize"*; "Filed" → *"Organized"*. The
+  per-post action that moves `review → filed` reads *"Organize"* / *"File it"* (verb lives
+  in `src/PostCard.jsx`).
+- **Export CTA** (topbar `exportLabel`, `src/App.jsx`): the "Export CSV" / "Export
+  filtered CSV" button gains reuse framing — e.g. *"Reuse → CSV"* / *"Reuse filtered →
+  CSV"*, or a *"Build a brief"* label. Keep "CSV" in the string so the function stays
+  obvious.
+- **Collections create** (`src/CollectionSidebar.jsx`): the create form's
+  "Description (optional)" textarea placeholder becomes a use-nudge — *"Where will you use
+  this?"* — steering collections toward action over topic.
 - **"Save" stays "Save"** in the extension — it is LinkedIn's verb and the zero-friction
   wedge. We do not rename the one action the user already knows.
 
@@ -185,12 +200,13 @@ Pre-launch, validation is qualitative. The reframe is good if:
 
 | Area | File(s) | Change |
 |---|---|---|
-| Hero / header copy | `src/App.jsx` | Add supporting second-brain line; keep operator headline |
-| Empty states | `src/App.jsx` | Rewrite empty-library and empty-search copy to the loop |
-| Status labels | `src/PostCard.jsx`, `src/BrowseControls.jsx` | `review` → "To organize"; derived "Distilled" surfacing |
-| Loop card | new component (e.g. `src/LoopCard.jsx`) + mount in `src/App.jsx` | Onboarding loop + calm status nudge; local dismissal |
-| Collections copy | `src/CollectionSidebar.jsx` | "Where will you use this?" create sub-label |
-| Export CTA | `src/App.jsx` / `src/exportCsv.js` call site | "Reuse →" / "Build a brief" label |
+| Brand tagline | `src/App.jsx` (topbar brand block, ~L206-213) | Add supporting "Your second brain for LinkedIn" line under the wordmark |
+| Empty states | `src/App.jsx` (~L275-290) | Rewrite empty-library + empty-search copy to the loop |
+| Section headers | `src/App.jsx` (~L292-328) | "To review" → "To organize"; "Filed" → "Organized" |
+| Per-post action verb | `src/PostCard.jsx` | review→filed action reads "Organize" / "File it" |
+| Loop card | new `src/LoopCard.jsx` + mount in `src/App.jsx` content-col; styles in `src/styles.css` | Onboarding loop + calm nudge (review count); local dismissal |
+| Collections copy | `src/CollectionSidebar.jsx` (~L121) | Description placeholder → "Where will you use this?" |
+| Export CTA | `src/App.jsx` (`exportLabel`, ~L202) | "Export CSV" → reuse-framed label, keep "CSV" |
 | Story | `.agents/product-marketing-context.md`, `docs/jobs-to-be-done.md` | Supporting category line; sharpened objection; voice note |
 
 No files in `api/`, `extension/`, or the DB layer change. The reframe is entirely
