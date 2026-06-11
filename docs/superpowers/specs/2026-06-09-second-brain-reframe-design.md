@@ -129,9 +129,10 @@ once dismissed. This is the **only** net-new component in scope.
   post is worth keeping, hit LinkedIn's Save — it lands here, out of your head."*
 - **Empty search** (`filtered.length === 0` state): *"Nothing matches. Your second brain
   only knows what you've captured."*
-- **Section headers:** "To review" → *"To organize"*; "Filed" → *"Organized"*. The
-  per-post action that moves `review → filed` reads *"Organize"* / *"File it"* (verb lives
-  in `src/PostCard.jsx`).
+- **Section headers:** "To review" → *"To organize"*; "Filed" → *"Organized"*. There is
+  **no per-post "file" button to rename** — a post auto-flips `review → filed`
+  server-side the moment it has ≥1 accepted tag (`api/posts/[id].js:29`). So *Organize =
+  tag it*; the existing tag chips are the organize affordance and stay unchanged.
 - **Export CTA** (topbar `exportLabel`, `src/App.jsx`): the "Export CSV" / "Export
   filtered CSV" button gains reuse framing — e.g. *"Reuse → CSV"* / *"Reuse filtered →
   CSV"*, or a *"Build a brief"* label. Keep "CSV" in the string so the function stays
@@ -203,7 +204,7 @@ Pre-launch, validation is qualitative. The reframe is good if:
 | Brand tagline | `src/App.jsx` (topbar brand block, ~L206-213) | Add supporting "Your second brain for LinkedIn" line under the wordmark |
 | Empty states | `src/App.jsx` (~L275-290) | Rewrite empty-library + empty-search copy to the loop |
 | Section headers | `src/App.jsx` (~L292-328) | "To review" → "To organize"; "Filed" → "Organized" |
-| Per-post action verb | `src/PostCard.jsx` | review→filed action reads "Organize" / "File it" |
+| Per-post action | `src/PostCard.jsx` | **No change** — organize = accept a tag; status auto-flips `review→filed` server-side (`api/posts/[id].js:29`); tag chips unchanged |
 | Loop card | new `src/LoopCard.jsx` + mount in `src/App.jsx` content-col; styles in `src/styles.css` | Onboarding loop + calm nudge (review count); local dismissal |
 | Collections copy | `src/CollectionSidebar.jsx` (~L121) | Description placeholder → "Where will you use this?" |
 | Export CTA | `src/App.jsx` (`exportLabel`, ~L202) | "Export CSV" → reuse-framed label, keep "CSV" |
