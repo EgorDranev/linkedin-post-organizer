@@ -101,18 +101,11 @@ function collapseSpacedCaps(text) {
   );
 }
 
-function readableText(text) {
-  let clean = collapseSpacedCaps(
-    String(text || "")
-      .replace(/[ \t]+/g, " ")
-      .replace(/\n[ \t]+/g, "\n")
-      .replace(/\bView image\b\s*/gi, "")
-      .trim()
-  );
-
-  clean = clean
+// Re-flow a run-on capture (no author paragraph breaks) into legible sections.
+// Heuristic only — applied as a fallback when the post text arrives as one blob.
+function reflowRunOn(text) {
+  let clean = text
     .replace(/\s+(?=\d{1,2}\.\s+[A-Z])/g, "\n\n")
-    .replace(DOMAIN_RE, (match) => `\n\n${match}\n\n`)
     .replace(SECTION_START_RE, (_match, number, title) => `\n\n${number}. ${title}\n\n`)
     .replace(/\s+(?=(?:I am |I have |I’m |I'm |My |This |An agreement |For your |Over the ))/g, "\n\n")
     .replace(/[ \t]+\n/g, "\n")
@@ -129,10 +122,32 @@ function readableText(text) {
     .replace(/\s+(?=\d{1,2}\s+[A-Z][A-Za-z][^.\n]{8,80}(?:\s+\d{1,2}\b|$))/g, "\n\n");
 }
 
+function readableText(text) {
+  const clean = collapseSpacedCaps(
+    String(text || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\bView image\b\s*/gi, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+
+  // The author's own paragraph breaks (blank lines) are the truest structure —
+  // when the capture preserved them, render them verbatim like LinkedIn does
+  // instead of re-flowing the text and risking mangled breaks.
+  if (clean.includes("\n\n")) return clean;
+
+  // Otherwise the capture is a single run-on block: fall back to heuristic
+  // sectioning so long Q&A / numbered posts stay legible.
+  return reflowRunOn(clean);
+}
+
 function classifyBlock(block, index) {
   const text = block.trim();
   if (/^\d{1,2}\.\s+.{4,160}\??$/.test(text)) return "question";
-  if (/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/i.test(text) && text.length < 80) {
+  if (/^(?:https?:\/\/)?(?:[a-z0-9-]+\.)+(?!(?:md)\b)[a-z]{2,}(?:\/\S*)?$/i.test(text)) {
     return "source";
   }
   if (index === 0 && text.length < 120 && !/[.!?]$/.test(text)) return "title";

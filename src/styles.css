@@ -753,8 +753,8 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 .card-post-text {
   margin-top: var(--space-5);
   color: var(--ink);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 400;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
