@@ -376,6 +376,41 @@
   // The author's avatar is deliberately excluded from post media (isPostImage
   // filters out profile/avatar images), so capture it separately here. Works on
   // both feed posts and saved-list cards via their respective actor blocks.
+  // LinkedIn obfuscates its component class names on some builds (e.g.
+  // "_0128cd8b"), so anything scoped to .update-components-actor silently breaks.
+  // The author's header link stays semantic, though: the first /in/ or /company/
+  // anchor that wraps an avatar img. Its img alt carries the name
+  // ("View <Name>’s profile" / "View company: <Name>"). This is the resilient
+  // anchor for author, avatar, and profile URL when class selectors miss.
+  function actorLinkIn(scope) {
+    const links =
+      scope?.querySelectorAll?.("a[href*='/in/'], a[href*='/company/']") || [];
+    // The post author's avatar is the most prominent (≈48px). Social-proof
+    // reactors ("X loves this") and inline mentions render much smaller (≈24px)
+    // and sit above/within the post, so pick the largest avatar, not the first.
+    let best = { link: null, img: null, size: -1 };
+    for (const link of links) {
+      const img = link.querySelector("img");
+      if (!img) continue;
+      const r = img.getBoundingClientRect?.();
+      const size = r ? Math.min(r.width, r.height) : 0;
+      if (size > best.size) best = { link, img, size };
+    }
+    return best;
+  }
+
+  function nameFromAvatarAlt(alt) {
+    const t = cleanLinkedInText(alt || "")
+      .replace(/^view\s+/i, "")
+      .replace(/^company:\s*/i, "")
+      .replace(/[’']s\s+profile\s*$/i, "")
+      .replace(/\s+profile\s*$/i, "")
+      .replace(/^photo of\s+/i, "")
+      .trim();
+    // Generic alts on recommendation/sidebar avatars carry no name.
+    return /^(?:company|profile)$/i.test(t) ? "" : t;
+  }
+
   function extractAvatar(scope) {
     const selectors = [
       ".update-components-actor__avatar img",
@@ -395,7 +430,9 @@
       // Skip lazy-load ghosts (data: placeholders) — only real CDN photos.
       if (url && /^https?:/i.test(url)) return url;
     }
-    return "";
+    // Class-obfuscated builds: the avatar lives inside the actor header link.
+    const url = imageUrl(actorLinkIn(scope).img);
+    return url && /^https?:/i.test(url) ? url : "";
   }
 
   function isChromeText(text) {
@@ -509,6 +546,14 @@
       const author = cleanAuthor(aria || clean(link));
       if (author) return author;
     }
+
+    // Class-obfuscated builds: read the name off the actor header link — its
+    // avatar alt ("View <Name>’s profile") or aria-label.
+    const { link, img } = actorLinkIn(postEl);
+    const fromAlt = nameFromAvatarAlt(attr(img, "alt"));
+    if (fromAlt) return fromAlt;
+    const fromAria = cleanAuthor(attr(link, "aria-label"));
+    if (fromAria) return fromAria;
 
     return "";
   }
@@ -1084,7 +1129,9 @@
         ".update-components-actor a[href*='/company/']",
         ".feed-shared-actor a[href*='/in/']",
         ".feed-shared-actor a[href*='/company/']",
-      ]) || null;
+      ]) ||
+      absoluteUrl(actorLinkIn(postEl).link?.getAttribute("href")) ||
+      null;
     const publishedText =
       firstText(postEl, [
         ".update-components-actor__sub-description",
