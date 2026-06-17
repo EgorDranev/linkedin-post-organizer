@@ -38,15 +38,28 @@
     /* context already invalidated at load time — nothing to do */
   }
 
+  // The feed mutates constantly (auto-refresh, infinite scroll). Coalesce bursts
+  // so we re-hook newly injected posts without a storage read per mutation.
+  let rehookTimer = 0;
+  function scheduleRehook() {
+    if (rehookTimer) return;
+    rehookTimer = setTimeout(() => {
+      rehookTimer = 0;
+      if (!LIS.contextAlive()) return shutdown();
+      LIS.safeStorageGet([AUTO_CAPTURE_KEY], ({ autoCapture }) => {
+        hookIfEnabled(autoCapture);
+      });
+    }, 250);
+  }
+
   const feedObserver = new MutationObserver(() => {
     if (!LIS.contextAlive()) return shutdown();
-    LIS.safeStorageGet([AUTO_CAPTURE_KEY], ({ autoCapture }) => {
-      hookIfEnabled(autoCapture);
-    });
+    scheduleRehook();
   });
   feedObserver.observe(document.body, { childList: true, subtree: true });
 
   function shutdown() {
+    if (rehookTimer) clearTimeout(rehookTimer);
     feedObserver.disconnect();
     try {
       chrome.storage.onChanged.removeListener(onStorageChanged);

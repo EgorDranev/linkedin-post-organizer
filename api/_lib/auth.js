@@ -30,7 +30,16 @@ function parseCookies(req) {
   for (const part of header.split(";")) {
     const i = part.indexOf("=");
     if (i === -1) continue;
-    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    const raw = part.slice(i + 1).trim();
+    // A single malformed cookie (e.g. a stray "%") must not throw and 500 the
+    // whole request — fall back to the raw value so other cookies still parse.
+    let value;
+    try {
+      value = decodeURIComponent(raw);
+    } catch {
+      value = raw;
+    }
+    out[part.slice(0, i).trim()] = value;
   }
   return out;
 }

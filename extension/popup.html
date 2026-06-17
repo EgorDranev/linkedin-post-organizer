@@ -10,10 +10,31 @@
         padding: 14px;
         color: #1d2226;
       }
-      h1 { font-size: 15px; margin: 0 0 8px; }
+      h1 { font-size: 15px; margin: 0 0 10px; }
+
+      /* Step progress */
+      .stepper { display: flex; gap: 6px; margin: 0 0 14px; }
+      .dot {
+        height: 5px;
+        flex: 1;
+        border-radius: 3px;
+        background: #e3e6ea;
+        transition: background 0.15s ease;
+      }
+      .dot.done,
+      .dot.current { background: #0a66c2; }
+
+      .step-title { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+
+      /* Steps: only the active one is shown */
+      .step { display: none; }
+      .step.active { display: block; }
+
       .status { font-size: 13px; margin: 6px 0; }
       .ok { color: #0a7d3c; }
       .bad { color: #c0392b; }
+      .err { color: #c0392b; font-size: 12px; margin-top: 6px; min-height: 14px; }
+
       label { display: block; font-size: 12px; color: #6b7280; margin: 10px 0 4px; }
       input[type="text"],
       input[type="password"] {
@@ -29,46 +50,140 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-top: 10px;
+        margin-top: 12px;
         font-size: 13px;
       }
       .row input { width: auto; margin: 0; }
+      .row input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        flex: 0 0 auto;
+        position: relative;
+        width: 16px;
+        height: 16px;
+        border: 1px solid #c4cdd5;
+        border-radius: 4px;
+        background: #fff;
+        cursor: pointer;
+      }
+      .row input[type="checkbox"]:checked {
+        background: #0a66c2;
+        border-color: #0a66c2;
+      }
+      .row input[type="checkbox"]:checked::after {
+        content: "";
+        position: absolute;
+        left: 5px;
+        top: 2px;
+        width: 3px;
+        height: 7px;
+        border: solid #fff;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+      }
+      .row input[type="checkbox"]:focus-visible {
+        outline: 2px solid rgba(10, 102, 194, 0.35);
+        outline-offset: 2px;
+      }
+
       button {
-        margin-top: 8px;
         background: #0a66c2;
         color: #fff;
         border: none;
         border-radius: 6px;
         padding: 6px 12px;
+        font: inherit;
         font-weight: 600;
         cursor: pointer;
       }
+      button.secondary {
+        width: 100%;
+        margin-top: 12px;
+        background: #1f7a4d;
+      }
+      button.ghost {
+        background: #fff;
+        color: #0a66c2;
+        border: 1px solid #e3e6ea;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      /* Wizard navigation footer */
+      .nav { display: flex; gap: 8px; margin-top: 16px; }
+      .nav button { margin-top: 0; }
+      #back { flex: 0 0 auto; }
+      #next,
+      #retry { flex: 1; }
+
       a { display: block; margin-top: 10px; color: #0a66c2; text-decoration: none; font-weight: 600; }
+      a.muted { font-weight: 500; font-size: 12px; color: #6b7280; }
       p.hint { color: #6b7280; font-size: 12px; margin: 8px 0 0; line-height: 1.4; }
     </style>
   </head>
   <body>
     <h1>LinkedIn Saver</h1>
-    <div class="status" id="status">Checking server…</div>
 
-    <label for="server">App server URL</label>
-    <input id="server" type="text" placeholder="https://your-app.vercel.app" />
+    <div class="stepper" id="stepper"></div>
 
-    <label for="password">Password</label>
-    <input id="password" type="password" placeholder="App password" />
+    <!-- Step 1: server URL -->
+    <section class="step" data-step="0">
+      <p class="step-title">Connect your app</p>
+      <label for="server">App server URL</label>
+      <input id="server" type="text" placeholder="https://your-app.vercel.app" />
+      <p class="hint">The address where your LinkedIn Saver app is deployed.</p>
+      <div class="err" id="urlErr"></div>
+    </section>
 
-    <div class="row">
-      <input id="autoCapture" type="checkbox" checked />
-      <label for="autoCapture" style="margin: 0; color: #1d2226">Auto-capture native Save</label>
+    <!-- Step 2: password -->
+    <section class="step" data-step="1">
+      <p class="step-title">Password</p>
+      <label for="password">App password</label>
+      <input id="password" type="password" placeholder="App password" />
+      <p class="hint">Leave blank if your app has no password set.</p>
+    </section>
+
+    <!-- Step 3: verify -->
+    <section class="step" data-step="2">
+      <p class="step-title">Verify connection</p>
+      <div class="status" id="status">Checking connection…</div>
+      <p class="hint" id="verifyHint"></p>
+    </section>
+
+    <!-- Step 4: done / first action -->
+    <section class="step" data-step="3">
+      <p class="step-title">You're all set</p>
+      <div class="status ok" id="doneStatus">● Connected</div>
+
+      <div class="row">
+        <input id="autoCapture" type="checkbox" checked />
+        <label for="autoCapture" style="margin: 0; color: #1d2226">Auto-capture native Save</label>
+      </div>
+
+      <button id="importSaved" class="secondary">Import LinkedIn saved posts</button>
+
+      <a id="open" href="#" target="_blank">Open my saved posts →</a>
+      <a
+        id="openLinkedInSaved"
+        href="https://www.linkedin.com/my-items/saved-posts/"
+        target="_blank"
+      >Open LinkedIn saved posts →</a>
+      <p class="hint">
+        On LinkedIn, use the built-in <b>Save</b> on any post — it is sent to your app
+        automatically. To backfill older saves, open LinkedIn saved posts and run import.
+      </p>
+      <a id="reconfigure" class="muted" href="#">Change server / password</a>
+    </section>
+
+    <!-- Shared navigation footer -->
+    <div class="nav" id="nav">
+      <button id="back" class="ghost">← Back</button>
+      <button id="next">Next →</button>
+      <button id="retry">Retry</button>
     </div>
 
-    <button id="save">Save settings</button>
-
-    <a id="open" href="#" target="_blank">Open my saved posts →</a>
-    <p class="hint">
-      On LinkedIn, use the built-in <b>Save</b> on any post — it is sent to your app
-      automatically.
-    </p>
     <script src="popup.js"></script>
   </body>
 </html>

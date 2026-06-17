@@ -22,9 +22,11 @@
         "https://linkedin.com/*"
       ],
       "js": [
+        "lib/chrome-safe.js",
         "lib/extract.js",
         "lib/save.js",
         "native-save.js",
+        "saved-import.js",
         "content.js"
       ],
       "css": ["content.css"],

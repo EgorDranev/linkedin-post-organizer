@@ -29,8 +29,12 @@ export function ensureSchema() {
         text            TEXT NOT NULL,
         saved_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
         status          TEXT NOT NULL DEFAULT 'review',
-        suggested       JSONB NOT NULL DEFAULT '[]'::jsonb
+        suggested       JSONB NOT NULL DEFAULT '[]'::jsonb,
+        metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+        media           JSONB NOT NULL DEFAULT '[]'::jsonb
       )`;
+    await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`;
+    await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS media JSONB NOT NULL DEFAULT '[]'::jsonb`;
     await sql`
       CREATE TABLE IF NOT EXISTS tags (
         id   BIGSERIAL PRIMARY KEY,
@@ -41,6 +45,19 @@ export function ensureSchema() {
         post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
         tag_id  BIGINT NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
         PRIMARY KEY (post_id, tag_id)
+      )`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS collections (
+        id            BIGSERIAL PRIMARY KEY,
+        name          TEXT UNIQUE NOT NULL,
+        description   TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS post_collections (
+        post_id       BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        collection_id BIGINT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+        PRIMARY KEY (post_id, collection_id)
       )`;
   })();
   return schemaReady;
@@ -91,7 +108,13 @@ export async function hydrate(row) {
     text: row.text,
     savedAt: row.saved_at,
     status: row.status,
+    metadata:
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata
+        : {},
+    media: Array.isArray(row.media) ? row.media : [],
     tags: await tagsForPost(row.id),
+    collections: await getCollectionsForPost(row.id),
     // jsonb is returned already parsed by the driver
     suggested: Array.isArray(row.suggested) ? row.suggested : [],
   };
@@ -100,4 +123,81 @@ export async function hydrate(row) {
 export async function getPost(id) {
   const rows = await sql`SELECT * FROM posts WHERE id = ${id}`;
   return rows.length ? hydrate(rows[0]) : null;
+}
+
+// --- collection functions --------------------------------------------------
+
+export async function getAllCollections() {
+  return await sql`SELECT id, name, description, created_at FROM collections ORDER BY name`;
+}
+
+export async function getCollectionById(id) {
+  const rows = await sql`SELECT id, name, description, created_at FROM collections WHERE id = ${id}`;
+  return rows.length ? rows[0] : null;
+}
+
+export async function getCollectionByName(name) {
+  const rows = await sql`SELECT id, name, description, created_at FROM collections WHERE name = ${name}`;
+  return rows.length ? rows[0] : null;
+}
+
+export async function createCollection(name, description = null) {
+  const existing = await getCollectionByName(name);
+  if (existing) return existing;
+
+  const rows = await sql`
+    INSERT INTO collections (name, description)
+    VALUES (${name}, ${description})
+    RETURNING id, name, description, created_at`;
+  return rows[0];
+}
+
+export async function updateCollection(id, name, description = null) {
+  const rows = await sql`
+    UPDATE collections
+    SET name = ${name}, description = ${description}
+    WHERE id = ${id}
+    RETURNING id, name, description, created_at`;
+  return rows[0];
+}
+
+export async function deleteCollection(id) {
+  await sql`DELETE FROM post_collections WHERE collection_id = ${id}`;
+  await sql`DELETE FROM collections WHERE id = ${id}`;
+}
+
+export async function getPostsInCollection(collectionId) {
+  const rows = await sql`
+    SELECT p.* FROM posts p
+    JOIN post_collections pc ON p.id = pc.post_id
+    WHERE pc.collection_id = ${collectionId}
+    ORDER BY p.saved_at DESC, p.id DESC`;
+  return Promise.all(rows.map(hydrate));
+}
+
+export async function addPostToCollection(postId, collectionId) {
+  await sql`
+    INSERT INTO post_collections (post_id, collection_id)
+    VALUES (${postId}, ${collectionId})
+    ON CONFLICT DO NOTHING`;
+}
+
+export async function removePostFromCollection(postId, collectionId) {
+  await sql`
+    DELETE FROM post_collections
+    WHERE post_id = ${postId} AND collection_id = ${collectionId}`;
+}
+
+export async function getCollectionsForPost(postId) {
+  const rows = await sql`
+    SELECT c.id, c.name, c.description, c.created_at
+    FROM collections c
+    JOIN post_collections pc ON c.id = pc.collection_id
+    WHERE pc.post_id = ${postId}
+    ORDER BY c.name`;
+  return rows;
+}
+
+export async function removePostFromAllCollections(postId) {
+  await sql`DELETE FROM post_collections WHERE post_id = ${postId}`;
 }

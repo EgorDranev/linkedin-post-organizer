@@ -3,81 +3,1113 @@
 (function () {
   const LIS = (globalThis.LIS = globalThis.LIS || {});
 
-  const POST_SELECTOR = [
+  const POST_CONTAINER_SELECTOR = [
     "div.feed-shared-update-v2[data-urn]",
+    "div.feed-shared-update-v2[data-id]",
     "div.feed-shared-update-v2",
-    "[data-urn^='urn:li:activity']",
-    "[data-urn*='urn:li:activity:']",
-    "[data-id^='urn:li:activity']",
+    "div.update-components-activity",
+    ".fie-impression-container",
+    "[data-view-name='feed-full-update']",
+    "[data-view-name='profile-component-entity']",
+    "[role='article']",
+    "article",
+  ].join(", ");
+
+  const POST_SELECTOR = [
+    POST_CONTAINER_SELECTOR,
+    "[data-urn*='urn:li:activity']",
+    "[data-id*='urn:li:activity']",
   ].join(", ");
 
   const PLACEHOLDER = "[LinkedIn post — no text extracted]";
 
   function clean(el) {
-    return el ? el.innerText.trim().replace(/\s+\n/g, "\n") : "";
+    const raw = el?.innerText || el?.textContent || "";
+    return raw.trim().replace(/\s+\n/g, "\n").replace(/[ \t]+/g, " ");
   }
 
-  LIS.findPosts = function findPosts() {
-    return document.querySelectorAll(
-      "div.feed-shared-update-v2, [data-urn^='urn:li:activity']"
+  function cleanText(value) {
+    return String(value || "")
+      .trim()
+      .replace(/\s+\n/g, "\n")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n");
+  }
+
+  function cleanLinkedInText(value) {
+    return cleanText(value)
+      .replace(/\bsee more\b/gi, "")
+      .replace(/\bshow more\b/gi, "")
+      .trim();
+  }
+
+  function normalizeUrn(value) {
+    const raw = value || "";
+    const direct = raw.match(/urn:li:activity:\d+/i)?.[0];
+    if (direct) return direct;
+
+    const id = raw.match(/activity[:_-](\d+)/i)?.[1];
+    return id ? `urn:li:activity:${id}` : "";
+  }
+
+  function postUrlFromUrn(urn) {
+    return urn ? `https://www.linkedin.com/feed/update/${urn}/` : "";
+  }
+
+  function getIdentity(el) {
+    if (!el?.getAttribute) return "";
+    return (
+      normalizeUrn(el.getAttribute("data-urn")) ||
+      normalizeUrn(el.getAttribute("data-id"))
     );
+  }
+
+  function looksLikePost(el) {
+    if (!el?.querySelector) return false;
+    return Boolean(
+      getIdentity(el) ||
+        el.classList?.contains("feed-shared-update-v2") ||
+        el.classList?.contains("update-components-activity") ||
+        el.classList?.contains("fie-impression-container") ||
+        el.getAttribute?.("data-view-name") === "feed-full-update" ||
+        (el.querySelector(".update-components-actor, .feed-shared-actor") &&
+          el.querySelector(
+            ".feed-shared-control-menu__trigger, .update-components-text, .feed-shared-inline-show-more-text, [data-test-id='main-feed-activity-card__commentary']"
+          ))
+    );
+  }
+
+  function postScore(el) {
+    if (!looksLikePost(el)) return 0;
+    let score = 1;
+    if (getIdentity(el)) score += 4;
+    if (
+      el.querySelector(
+        ".update-components-text, .feed-shared-inline-show-more-text, [data-test-id*='commentary'], [data-test-id*='post-content']"
+      )
+    ) {
+      score += 3;
+    }
+    if (el.querySelector(".update-components-actor, .feed-shared-actor")) score += 2;
+    if (el.querySelector(".feed-shared-control-menu__trigger")) score += 1;
+    return score;
+  }
+
+  function contentSignalScore(el) {
+    if (!el?.querySelector) return 0;
+    let score = 0;
+    const text = clean(el);
+    if (getIdentity(el)) score += 8;
+    if (el.matches?.("div.feed-shared-update-v2, div.update-components-activity, .fie-impression-container")) {
+      score += 10;
+    }
+    if (el.querySelector(".update-components-actor, .feed-shared-actor")) score += 8;
+    if (
+      el.querySelector(
+        ".update-components-text, .feed-shared-inline-show-more-text, [data-test-id*='commentary'], [data-test-id*='post-content'], .attributed-text-segment-list__content"
+      )
+    ) {
+      score += 8;
+    }
+    if (el.querySelector(".feed-shared-control-menu__trigger, button[aria-label*='control menu' i], button[aria-label*='more actions' i]")) {
+      score += 4;
+    }
+    if (el.querySelector(".social-details-social-counts, .social-details-social-actions")) {
+      score += 2;
+    }
+    if (text.length > 80) score += 1;
+    if (text.length > 350) score += 1;
+    if (text.length > 5000) score -= 6;
+    return score;
+  }
+
+  function normalizePostRoot(el) {
+    if (!el?.parentElement) return el || null;
+    let best = el;
+    let bestScore = contentSignalScore(el);
+    let node = el.parentElement;
+
+    for (let depth = 0; depth < 14 && node; depth++) {
+      if (node === document.body || node === document.documentElement) break;
+      const r = node.getBoundingClientRect?.();
+      if (r && r.width > innerWidth * 0.98 && r.height > innerHeight * 1.4) break;
+
+      const score = contentSignalScore(node);
+      if (score > bestScore) {
+        best = node;
+        bestScore = score;
+      }
+
+      if (
+        node.matches?.("div.feed-shared-update-v2, div.update-components-activity, .fie-impression-container") &&
+        score >= 16
+      ) {
+        break;
+      }
+      node = node.parentElement;
+    }
+
+    return best || el;
+  }
+
+  function rectDistance(a, b) {
+    const ax = (a.left + a.right) / 2;
+    const ay = (a.top + a.bottom) / 2;
+    const bx = (b.left + b.right) / 2;
+    const by = (b.top + b.bottom) / 2;
+    const dx = ax - bx;
+    const dy = ay - by;
+    return dx * dx + dy * dy;
+  }
+
+  function isUsefulRect(r) {
+    return r.width >= 260 && r.height >= 80 && r.top < innerHeight && r.bottom > 0;
+  }
+
+  function fallbackScore(el, nearRect) {
+    const r = el.getBoundingClientRect();
+    if (!isUsefulRect(r)) return 0;
+    if (r.width > innerWidth * 0.98 && r.height > innerHeight * 0.9) return 0;
+    if (el.closest("header, nav, footer, [role='banner'], [role='navigation']")) return 0;
+    if (el.closest(".msg-overlay-bubble-header, .msg-overlay-list-bubble")) return 0;
+
+    const text = clean(el);
+    if (text.length < 30) return 0;
+
+    let score = 1;
+    if (getIdentity(el)) score += 10;
+    if (el.matches(POST_CONTAINER_SELECTOR)) score += 8;
+    if (el.querySelector("[data-urn*='urn:li:activity'], [data-id*='urn:li:activity']")) {
+      score += 8;
+    }
+    if (el.querySelector(".update-components-text, .feed-shared-inline-show-more-text, [data-test-id='main-feed-activity-card__commentary']")) {
+      score += 6;
+    }
+    if (el.querySelector(".update-components-actor, .feed-shared-actor")) score += 4;
+    if (el.querySelector(".feed-shared-control-menu__trigger, button[aria-label*='more actions' i], button[aria-label*='control menu' i]")) {
+      score += 3;
+    }
+    if (text.length > 80) score += 2;
+    if (text.length > 4000) score -= 5;
+
+    if (nearRect) {
+      score -= Math.min(8, rectDistance(r, nearRect) / 80_000);
+    }
+
+    return score;
+  }
+
+  function fallbackCandidates() {
+    return document.querySelectorAll(
+      [
+        POST_CONTAINER_SELECTOR,
+        "[data-urn]",
+        "[data-id]",
+        "article",
+        "[role='article']",
+        "main div",
+      ].join(", ")
+    );
+  }
+
+  LIS.findBestPostCandidate = function findBestPostCandidate(nearEl) {
+    const nearRect = nearEl?.getBoundingClientRect?.();
+    let best = null;
+    let bestScore = 0;
+
+    for (const el of fallbackCandidates()) {
+      const score = fallbackScore(el, nearRect);
+      if (score > bestScore) {
+        best = el;
+        bestScore = score;
+      }
+    }
+
+    return bestScore >= 4 ? best : null;
+  };
+
+  function firstText(postEl, selectors) {
+    for (const selector of selectors) {
+      const text = clean(postEl?.querySelector(selector));
+      if (text) return text;
+    }
+    return "";
+  }
+
+  function uniqueTexts(values) {
+    const seen = new Set();
+    const out = [];
+    for (const value of values) {
+      const text = cleanLinkedInText(value);
+      const key = text.toLowerCase();
+      if (!text || seen.has(key)) continue;
+      seen.add(key);
+      out.push(text);
+    }
+    return out;
+  }
+
+  function absoluteUrl(value) {
+    if (!value) return "";
+    try {
+      return new URL(value, location.href).href;
+    } catch {
+      return "";
+    }
+  }
+
+  function canonicalLinkedInUrl(url) {
+    if (!url) return "";
+    try {
+      const parsed = new URL(url, location.href);
+      if (
+        /(^|\.)linkedin\.com$/i.test(parsed.hostname) &&
+        parsed.pathname === "/redir/redirect"
+      ) {
+        return parsed.searchParams.get("url") || parsed.href;
+      }
+      parsed.hash = "";
+      return parsed.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function canonicalPostUrl(value) {
+    const url = canonicalLinkedInUrl(absoluteUrl(value));
+    if (!url) return "";
+    const urn = normalizeUrn(url);
+    if (urn) return postUrlFromUrn(urn);
+
+    try {
+      const parsed = new URL(url, location.href);
+      parsed.hash = "";
+      return parsed.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function firstHref(postEl, selectors) {
+    for (const selector of selectors) {
+      const href = postEl?.querySelector(selector)?.getAttribute?.("href");
+      const url = absoluteUrl(href);
+      if (url) return url;
+    }
+    return "";
+  }
+
+  function compactObject(obj) {
+    return Object.fromEntries(
+      Object.entries(obj).filter(([, value]) => {
+        if (value == null || value === "") return false;
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === "object") return Object.keys(value).length > 0;
+        return true;
+      })
+    );
+  }
+
+  function compactMedia(item) {
+    return compactObject({
+      type: item.type,
+      url: item.url,
+      thumbnailUrl: item.thumbnailUrl,
+      title: item.title,
+      description: item.description,
+      provider: item.provider,
+      alt: item.alt,
+    });
+  }
+
+  function pushUniqueMedia(items, seen, item) {
+    const media = compactMedia(item);
+    const key = media.url || media.thumbnailUrl || media.title;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    items.push(media);
+  }
+
+  function attr(el, name) {
+    return el?.getAttribute?.(name) || "";
+  }
+
+  function isVisibleElement(el) {
+    const r = el?.getBoundingClientRect?.();
+    return !r || (r.width > 0 && r.height > 0);
+  }
+
+  function imageUrl(img) {
+    const srcset = attr(img, "srcset") || attr(img, "data-srcset");
+    const candidates = srcset
+      .split(",")
+      .map((part) => {
+        const [url, size = ""] = part.trim().split(/\s+/);
+        const width = Number(size.match(/(\d+)w/)?.[1] || 0);
+        const scale = Number(size.match(/(\d+(?:\.\d+)?)x/)?.[1] || 0) * 1000;
+        return { url, score: width || scale || 0 };
+      })
+      .filter((item) => item.url)
+      .sort((a, b) => b.score - a.score);
+
+    return absoluteUrl(
+      candidates[0]?.url ||
+        attr(img, "data-delayed-url") ||
+        attr(img, "data-src") ||
+        img?.currentSrc ||
+        attr(img, "src")
+    );
+  }
+
+  function isPostImage(img) {
+    const url = imageUrl(img);
+    if (!url || url.startsWith("data:")) return false;
+    const r = img.getBoundingClientRect?.();
+    if (r && (r.width < 80 || r.height < 60)) return false;
+    if (r && r.width >= 150 && r.height >= 90) return true;
+    const label = [attr(img, "alt"), attr(img, "class"), attr(img.closest?.("a"), "class")]
+      .join(" ")
+      .toLowerCase();
+    return !/(profile|avatar|emoji|logo|icon)/.test(label);
+  }
+
+  function isChromeText(text) {
+    return /^(like|comment|repost|send|save|follow|connect|message|open|share|copy link|report|not interested|turn on notifications|view profile)$/i.test(
+      text
+    );
+  }
+
+  function isAttachmentTextNode(el) {
+    return Boolean(
+      el?.closest?.(
+        [
+          ".feed-shared-article",
+          ".update-components-article",
+          ".feed-shared-external-video",
+          ".update-components-external-video",
+          ".update-components-document",
+          ".document-s-container",
+          ".document-s-container__content",
+          ".feed-shared-image",
+          ".update-components-image",
+          ".update-components-linkedin-video",
+          ".feed-shared-linkedin-video",
+          "[data-test-id*='document']",
+          "[data-test-id*='attachment']",
+          "[data-test-id*='article']",
+        ].join(", ")
+      )
+    );
+  }
+
+  function extractPostText(postEl) {
+    const selectors = [
+      ".update-components-text",
+      ".update-components-text .break-words",
+      ".update-components-text span[aria-hidden='true']",
+      ".feed-shared-update-v2__description",
+      ".feed-shared-update-v2__commentary",
+      ".feed-shared-inline-show-more-text",
+      ".feed-shared-inline-show-more-text span[aria-hidden='true']",
+      ".feed-shared-text",
+      ".feed-shared-text span[aria-hidden='true']",
+      ".update-components-update-v2__commentary",
+      "[data-test-id='main-feed-activity-card__commentary']",
+      "[data-test-id='post-content']",
+      "[data-test-id='feed-shared-text']",
+    ];
+
+    const direct = uniqueTexts(
+      selectors
+        .map((selector) => postEl?.querySelector(selector))
+        .filter((el) => el && !isAttachmentTextNode(el))
+        .map(clean)
+    );
+    if (direct.length) return direct[0];
+
+    const scoped = [];
+    for (const el of postEl?.querySelectorAll?.(
+      [
+        "[data-test-id*='commentary']",
+        "[data-test-id*='post-content']",
+        ".break-words",
+        "div[dir='auto']",
+        "span[dir='auto']",
+      ].join(", ")
+    ) || []) {
+      if (!isVisibleElement(el)) continue;
+      if (isAttachmentTextNode(el)) continue;
+      if (el.closest(".update-components-actor, .feed-shared-actor")) continue;
+      if (el.closest(".feed-shared-social-action-bar, .social-details-social-actions")) continue;
+      if (el.closest("[role='menu'], .artdeco-dropdown__content")) continue;
+      const text = clean(el);
+      if (text.length < 12 || isChromeText(text)) continue;
+      scoped.push(text);
+    }
+
+    const candidates = uniqueTexts(scoped).sort((a, b) => b.length - a.length);
+    return candidates[0] || "";
+  }
+
+  function cleanAuthor(value) {
+    const raw = value?.nodeType ? clean(value) : value;
+    const text = cleanLinkedInText(raw)
+      .replace(/\s+(?:View|Open)\s+.+?\s+profile.*$/i, "")
+      .replace(/\b(?:View|Open)\s+(.+?)'?s?\s+profile\b/i, "$1")
+      .replace(/\s+following\b/i, "")
+      .trim();
+    return text.split("\n").map((line) => line.trim()).filter(Boolean)[0] || "";
+  }
+
+  function extractAuthor(postEl) {
+    const selectors = [
+      ".update-components-actor__title",
+      ".update-components-actor__title span[aria-hidden='true']",
+      ".update-components-actor__name",
+      ".update-components-actor__meta a span[dir]",
+      ".feed-shared-actor__title",
+      ".feed-shared-actor__title span[aria-hidden='true']",
+      ".feed-shared-actor__name",
+      "[data-test-id='main-feed-activity-card__actor-name']",
+    ];
+    for (const selector of selectors) {
+      const author = cleanAuthor(postEl?.querySelector(selector));
+      if (author) return author;
+    }
+
+    for (const link of postEl?.querySelectorAll?.(
+      ".update-components-actor a[href*='/in/'], .update-components-actor a[href*='/company/'], .feed-shared-actor a[href*='/in/'], .feed-shared-actor a[href*='/company/']"
+    ) || []) {
+      const aria = attr(link, "aria-label");
+      const author = cleanAuthor(aria || clean(link));
+      if (author) return author;
+    }
+
+    return "";
+  }
+
+  function likelyAuthorFromText(value) {
+    const text = cleanLinkedInText(value)
+      .replace(/\bView image\b/gi, " ")
+      .replace(/\b(?:www\.)?[a-z0-9-]+\.[a-z]{2,}(?:\/\S*)?/gi, " ")
+      .replace(/\b(?:Interview Tips|Write article|Visit my website|Book an appointment)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const titleAuthor = text.match(
+      /\b(?:Questions\s+and\s+Answers|Interview\s+Questions|Answers)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/
+    )?.[1];
+    if (titleAuthor) return titleAuthor;
+
+    const matches = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/g) || [];
+    const banned = new Set([
+      "View Image",
+      "Interview Questions",
+      "Interview Tips",
+      "Toughest Interview",
+      "Linkedin Post",
+    ]);
+
+    for (const match of matches) {
+      if (banned.has(match)) continue;
+      if (/^(?:Co|Founder|Agreement|Template|Startup|Toughest|Interview|Questions|Answers)\b/.test(match)) {
+        continue;
+      }
+      return match;
+    }
+
+    return "";
+  }
+
+  function fallbackAuthorFromCapture(text, media) {
+    for (const item of media || []) {
+      const author = likelyAuthorFromText(
+        [item.title, item.alt, item.description].filter(Boolean).join(" ")
+      );
+      if (author) return author;
+    }
+    return likelyAuthorFromText(text);
+  }
+
+  function isUsefulLink(url, postUrl) {
+    if (!url || url.startsWith("javascript:") || url.startsWith("mailto:")) return false;
+    try {
+      const parsed = new URL(url);
+      if (postUrl && parsed.href === postUrl) return false;
+      if (!/^https?:$/i.test(parsed.protocol)) return false;
+      const path = parsed.pathname;
+      if (/(\/mynetwork\/|\/notifications\/|\/jobs\/)/i.test(path)) {
+        return false;
+      }
+      if (/(miniProfile|lipi|trackingId|trk=|commentUrn|reactionType)/i.test(url)) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function extractLinks(postEl, postUrl) {
+    const links = [];
+    const seen = new Set();
+    for (const a of postEl?.querySelectorAll?.("a[href]") || []) {
+      if (!isVisibleElement(a)) continue;
+      if (a.closest(".update-components-actor, .feed-shared-actor")) continue;
+      if (a.closest(".feed-shared-social-action-bar, .social-details-social-actions")) continue;
+      if (a.closest("[role='menu'], .artdeco-dropdown__content")) continue;
+      const url = canonicalLinkedInUrl(absoluteUrl(attr(a, "href")));
+      if (!isUsefulLink(url, postUrl)) continue;
+      const label = cleanLinkedInText(attr(a, "aria-label") || clean(a));
+      const key = url.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      links.push(
+        compactObject({
+          url,
+          text: label && !isChromeText(label) ? label.slice(0, 160) : "",
+        })
+      );
+      if (links.length >= 12) break;
+    }
+    return links;
+  }
+
+  function fallbackTextFromAttachments(media, links) {
+    const lines = [];
+    for (const item of media || []) {
+      if (item.title) lines.push(item.title);
+      if (item.description) lines.push(item.description);
+      if (!item.title && item.alt && !/^(image|video)$/i.test(item.alt)) {
+        lines.push(item.alt);
+      }
+    }
+    for (const item of links || []) {
+      if (item.text && !/^linkedin\.com$/i.test(item.text)) lines.push(item.text);
+    }
+    return uniqueTexts(lines).join("\n").trim();
+  }
+
+  function extractSocialCounts(postEl) {
+    const counts = {};
+    const text = clean(postEl);
+    
+    // Extract likes/reactions using multiple methods
+    const reactions = text.match(/([\d,.]+[KkMm]?)\s+(?:reaction|like)/);
+    if (reactions) counts.reactions = reactions[1];
+    
+    // Look for like counts in elements
+    const likeElements = postEl.querySelectorAll('.social-details-social-counts__item, .social-counts, .react-button__reactors-count, [data-test-id*="like-count"]');
+    for (const element of likeElements) {
+      const likeText = clean(element);
+      const likeMatch = likeText.match(/([\d,.]+[KkMm]?)/);
+      if (likeMatch) {
+        counts.reactions = likeMatch[1];
+        break;
+      }
+    }
+    
+    // Extract comments
+    const comments = text.match(/([\d,.]+[KkMm]?)\s+comment/);
+    if (comments) counts.comments = comments[1];
+    
+    // Look for comment counts in elements
+    const commentElements = postEl.querySelectorAll('.comments-button, .social-details-social-counts__comments, [data-test-id*="comment-count"]');
+    for (const element of commentElements) {
+      const commentText = clean(element);
+      const commentMatch = commentText.match(/([\d,.]+[KkMm]?)/);
+      if (commentMatch) {
+        counts.comments = commentMatch[1];
+        break;
+      }
+    }
+    
+    // Extract reposts/shares
+    const reposts = text.match(/([\d,.]+[KkMm]?)\s+(?:repost|share)/);
+    if (reposts) counts.reposts = reposts[1];
+    
+    // Look for share counts in elements
+    const shareElements = postEl.querySelectorAll('.social-details-social-counts__reshares, [data-test-id*="repost-count"]');
+    for (const element of shareElements) {
+      const shareText = clean(element);
+      const shareMatch = shareText.match(/([\d,.]+[KkMm]?)/);
+      if (shareMatch) {
+        counts.reposts = shareMatch[1];
+        break;
+      }
+    }
+    
+    return counts;
+  }
+
+  function extractHashtagsAndMentions(text) {
+    const hashtags = text.match(/#[a-zA-Z0-9_]+/g) || [];
+    const mentions = text.match(/@[a-zA-Z0-9_]+/g) || [];
+    return {
+      hashtags: [...new Set(hashtags)].map(tag => tag.toLowerCase()), // Remove duplicates
+      mentions: [...new Set(mentions)].map(mention => mention.toLowerCase()) // Remove duplicates
+    };
+  }
+
+  function extractPostType(postEl) {
+    // Check for various post types based on elements present
+    if (postEl.querySelector('video, .feed-shared-linkedin-video')) {
+      return 'video';
+    } else if (postEl.querySelector('img, .feed-shared-image')) {
+      if (postEl.querySelector('.feed-shared-article')) {
+        return 'image_with_article';
+      }
+      return 'image';
+    } else if (postEl.querySelector('.feed-shared-article, .update-components-article')) {
+      return 'article';
+    } else if (postEl.querySelector('.feed-shared-external-video, .update-components-external-video')) {
+      return 'external_video';
+    } else if (postEl.querySelector('.update-components-document')) {
+      return 'document';
+    } else if (extractMedia(postEl).length > 0) {
+      return 'media';
+    } else {
+      return 'text';
+    }
+  }
+
+  function extractPublishedDate(postEl) {
+    // Try to find time element with datetime attribute
+    const timeEl = postEl.querySelector('time');
+    if (timeEl) {
+      const dateTime = timeEl.getAttribute('datetime');
+      if (dateTime) {
+        return new Date(dateTime).toISOString();
+      }
+      
+      // If no datetime attribute, try to parse the text content
+      const timeText = clean(timeEl);
+      if (timeText) {
+        // Attempt to parse common LinkedIn time formats
+        const date = parseLinkedInTime(timeText);
+        if (date) {
+          return date.toISOString();
+        }
+      }
+    }
+    
+    // Look for published text in other common locations
+    const pubSelectors = [
+      '.update-components-actor__sub-description',
+      '.feed-shared-actor__sub-description',
+      '.update-components-actor__sub-description span[aria-hidden="true"]'
+    ];
+    
+    for (const selector of pubSelectors) {
+      const pubEl = postEl.querySelector(selector);
+      if (pubEl) {
+        const pubText = clean(pubEl);
+        if (pubText) {
+          const date = parseLinkedInTime(pubText);
+          if (date) {
+            return date.toISOString();
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  function parseLinkedInTime(timeText) {
+    // Handle relative times like "2mo ago", "3d ago", etc.
+    const relativeTimeRegex = /(\d+)\s*(sec|min|h|d|w|mo|yr)\s*ago/;
+    const relativeMatch = timeText.match(relativeTimeRegex);
+    
+    if (relativeMatch) {
+      const [, amount, unit] = relativeMatch;
+      const num = parseInt(amount, 10);
+      const now = new Date();
+      
+      switch(unit) {
+        case 'sec':
+          now.setSeconds(now.getSeconds() - num);
+          break;
+        case 'min':
+          now.setMinutes(now.getMinutes() - num);
+          break;
+        case 'h':
+          now.setHours(now.getHours() - num);
+          break;
+        case 'd':
+          now.setDate(now.getDate() - num);
+          break;
+        case 'w':
+          now.setDate(now.getDate() - (num * 7));
+          break;
+        case 'mo':
+          now.setMonth(now.getMonth() - num);
+          break;
+        case 'yr':
+          now.setFullYear(now.getFullYear() - num);
+          break;
+      }
+      
+      return now;
+    }
+    
+    // Handle absolute dates like "Jan 15, 2023"
+    const absoluteTimeRegex = /[A-Za-z]{3}\s+\d{1,2},\s+\d{4}/;
+    const absoluteMatch = timeText.match(absoluteTimeRegex);
+    
+    if (absoluteMatch) {
+      return new Date(absoluteMatch[0]);
+    }
+    
+    // Handle other formats as needed
+    return null;
+  }
+
+  function extractCompanyInfo(postEl) {
+    // Look for company/organization information in the author section
+    const companySelectors = [
+      '.update-components-actor__description',
+      '.feed-shared-actor__description',
+      '.entity-result__secondary-subtitle',
+      '.update-components-actor__sub-description'
+    ];
+    
+    for (const selector of companySelectors) {
+      const companyEl = postEl.querySelector(selector);
+      if (companyEl) {
+        const text = clean(companyEl);
+        // Skip if it's a date/time string (likely publication info instead of company)
+        if (!/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(text)) {
+          // Extract company name if it follows typical patterns
+          if (text && !/^\d+[a-z]*\s+(?:mo|d|yr)\s+ago$/i.test(text)) {
+            return text;
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  function extractMedia(postEl) {
+    const media = [];
+    const seen = new Set();
+
+    for (const card of postEl?.querySelectorAll?.(
+      ".feed-shared-article, .update-components-article, .feed-shared-external-video, .update-components-external-video, .update-components-document"
+    ) || []) {
+      const link = card.querySelector("a[href]");
+      const img = card.querySelector("img");
+      pushUniqueMedia(media, seen, {
+        type: card.matches(".feed-shared-external-video, .update-components-external-video")
+          ? "video"
+          : "article",
+        url: absoluteUrl(attr(link, "href")),
+        thumbnailUrl: imageUrl(img),
+        title: firstText(card, [
+          ".feed-shared-article__title",
+          ".update-components-article__title",
+          ".feed-shared-external-video__title",
+          ".update-components-document__title",
+          "h2",
+          "h3",
+        ]),
+        description: firstText(card, [
+          ".feed-shared-article__description",
+          ".update-components-article__description",
+          ".feed-shared-external-video__description",
+        ]),
+        provider: firstText(card, [
+          ".feed-shared-article__subtitle",
+          ".update-components-article__subtitle",
+          ".feed-shared-external-video__subtitle",
+        ]),
+        alt: attr(img, "alt"),
+      });
+    }
+
+    for (const video of postEl?.querySelectorAll?.("video") || []) {
+      pushUniqueMedia(media, seen, {
+        type: "video",
+        url: absoluteUrl(attr(video, "src")),
+        thumbnailUrl: absoluteUrl(attr(video, "poster")),
+      });
+    }
+
+    for (const img of postEl?.querySelectorAll?.("img") || []) {
+      if (!isPostImage(img)) continue;
+      pushUniqueMedia(media, seen, {
+        type: "image",
+        url: imageUrl(img),
+        thumbnailUrl: imageUrl(img),
+        alt: attr(img, "alt"),
+      });
+      if (media.length >= 12) break;
+    }
+
+    return media.slice(0, 12);
+  }
+
+  function findPostUrlIn(el) {
+    const direct = normalizeUrn(
+      `${attr(el, "data-urn")} ${attr(el, "data-id")} ${attr(el, "href")}`
+    );
+    if (direct) return postUrlFromUrn(direct);
+
+    for (const a of el?.querySelectorAll?.("a[href]") || []) {
+      const url = canonicalPostUrl(attr(a, "href"));
+      if (/\/feed\/update\/urn:li:activity:\d+\/?/i.test(url)) return url;
+    }
+
+    return "";
+  }
+
+  function savedItemCardFor(link) {
+    const selectors = [
+      "li",
+      ".reusable-search__result-container",
+      ".entity-result",
+      ".artdeco-list__item",
+      "[data-view-name]",
+    ];
+    for (const selector of selectors) {
+      const card = link.closest?.(selector);
+      if (card && findPostUrlIn(card)) return card;
+    }
+    return link.closest?.("div") || link;
+  }
+
+  function cleanSavedText(card) {
+    const lines = clean(card)
+      .split("\n")
+      .map((line) => cleanLinkedInText(line))
+      .filter(Boolean)
+      .filter((line) => !isChromeText(line))
+      .filter((line) => !/^(all|articles|saved posts|my items)$/i.test(line));
+
+    const deduped = uniqueTexts(lines);
+    const text = deduped.slice(1).join("\n").trim() || deduped.join("\n").trim();
+    return text || "";
+  }
+
+  function extractSavedAuthor(card) {
+    const selectors = [
+      ".entity-result__title-text",
+      ".entity-result__title",
+      ".update-components-actor__title",
+      ".feed-shared-actor__title",
+      "a[href*='/in/'] span[aria-hidden='true']",
+      "a[href*='/company/'] span[aria-hidden='true']",
+      "a[href*='/in/']",
+      "a[href*='/company/']",
+    ];
+    for (const selector of selectors) {
+      const author = cleanAuthor(card.querySelector(selector));
+      if (author) return author;
+    }
+    return "";
+  }
+
+  LIS.canonicalPostUrl = canonicalPostUrl;
+
+  LIS.findPosts = function findPosts() {
+    return document.querySelectorAll(POST_SELECTOR);
   };
 
   LIS.findPostFrom = function findPostFrom(el) {
     if (!el?.closest) return null;
 
-    const direct = el.closest(POST_SELECTOR);
-    if (direct) return direct;
+    const direct = el.closest(
+      "[data-urn*='urn:li:activity'], [data-id*='urn:li:activity']"
+    );
+    if (direct) return normalizePostRoot(direct.closest(POST_CONTAINER_SELECTOR) || direct);
 
+    const container = el.closest(POST_CONTAINER_SELECTOR);
+    if (container) return normalizePostRoot(container);
+
+    let best = null;
+    let bestScore = 0;
     let node = el.parentElement;
-    for (let depth = 0; depth < 25 && node; depth++) {
-      if (node.classList?.contains("feed-shared-update-v2")) return node;
-      const urn = node.getAttribute?.("data-urn") || "";
-      if (urn.includes("urn:li:activity")) return node;
+    for (let depth = 0; depth < 40 && node; depth++) {
+      if (node === document.body || node === document.documentElement) break;
+      const score = postScore(node);
+      if (score > bestScore) {
+        best = node;
+        bestScore = score;
+      }
       node = node.parentElement;
     }
-    return null;
+    return normalizePostRoot(best);
+  };
+
+  LIS.findPostNearPoint = function findPostNearPoint(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+    for (const el of document.elementsFromPoint(x, y)) {
+      const post = LIS.findPostFrom(el);
+      if (post) return post;
+    }
+
+    let nearest = null;
+    let best = Infinity;
+    for (const post of fallbackCandidates()) {
+      const r = post.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+      const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      const score = dx * dx + dy * dy;
+      if (score < best) {
+        best = score;
+        nearest = post;
+      }
+    }
+    if (nearest && best < 250_000) return nearest;
+
+    return LIS.findBestPostCandidate({
+      getBoundingClientRect: () => ({
+        left: x,
+        right: x,
+        top: y,
+        bottom: y,
+      }),
+    });
   };
 
   LIS.getPostUrn = function getPostUrn(postEl) {
-    const direct = postEl?.getAttribute("data-urn") || "";
-    if (direct.includes("activity")) return direct;
-    const inner = postEl?.querySelector?.("[data-urn*='urn:li:activity']");
-    return inner?.getAttribute("data-urn") || direct;
+    const direct = getIdentity(postEl);
+    if (direct) return direct;
+
+    const inner = postEl?.querySelector?.(
+      "[data-urn*='urn:li:activity'], [data-id*='urn:li:activity'], [data-id*='activity:']"
+    );
+    return getIdentity(inner);
+  };
+
+  LIS.findSavedPostItems = function findSavedPostItems() {
+    const seen = new Set();
+    const items = [];
+    for (const link of document.querySelectorAll(
+      "a[href*='/feed/update/urn:li:activity'], a[href*='urn:li:activity']"
+    )) {
+      const url = canonicalPostUrl(attr(link, "href"));
+      if (!url || seen.has(url)) continue;
+      const card = savedItemCardFor(link);
+      if (!card) continue;
+      seen.add(url);
+      items.push({ url, card });
+    }
+    return items;
+  };
+
+  LIS.extractSavedItem = function extractSavedItem(item) {
+    const card = item.card || item;
+    const url = item.url || findPostUrlIn(card);
+    const urn = normalizeUrn(url);
+    const author = extractSavedAuthor(card) || null;
+    const authorHeadline =
+      firstText(card, [
+        ".entity-result__primary-subtitle",
+        ".entity-result__secondary-subtitle",
+        ".update-components-actor__description",
+        ".feed-shared-actor__description",
+      ]) || null;
+    const media = extractMedia(card);
+    const links = extractLinks(card, url);
+    const text =
+      extractPostText(card) ||
+      cleanSavedText(card) ||
+      fallbackTextFromAttachments(media, links) ||
+      PLACEHOLDER;
+    const fallbackAuthor = fallbackAuthorFromCapture(text, media);
+    const metadata = compactObject({
+      urn,
+      authorProfileUrl:
+        firstHref(card, ["a[href*='/in/']", "a[href*='/company/']"]) || null,
+      links,
+      capturedAt: new Date().toISOString(),
+      capturedFrom: location.href,
+      importedFromSavedPosts: true,
+    });
+
+    return {
+      url,
+      author: author || fallbackAuthor || null,
+      authorHeadline,
+      text,
+      metadata,
+      media,
+    };
   };
 
   LIS.extract = function extract(postEl) {
+    postEl = normalizePostRoot(postEl);
     const urn = LIS.getPostUrn(postEl);
-    const url = urn
-      ? `https://www.linkedin.com/feed/update/${urn}/`
-      : location.href;
+    const url = urn ? postUrlFromUrn(urn) : null;
 
-    const authorEl = postEl.querySelector(
-      ".update-components-actor__title, .update-components-actor__name, .update-components-actor__meta a span[dir]"
-    );
-    const headlineEl = postEl.querySelector(
-      ".update-components-actor__description"
-    );
-    const textEl = postEl.querySelector(
-      ".update-components-text, .feed-shared-update-v2__description, .feed-shared-inline-show-more-text, .update-components-update-v2__commentary"
-    );
-
-    const author = clean(authorEl) || null;
-    const authorHeadline = clean(headlineEl) || null;
+    const author = extractAuthor(postEl) || null;
+    const authorHeadline =
+      firstText(postEl, [
+        ".update-components-actor__description",
+        ".feed-shared-actor__description",
+      ]) || null;
+    const authorProfileUrl =
+      firstHref(postEl, [
+        ".update-components-actor a[href*='/in/']",
+        ".update-components-actor a[href*='/company/']",
+        ".feed-shared-actor a[href*='/in/']",
+        ".feed-shared-actor a[href*='/company/']",
+      ]) || null;
+    const publishedText =
+      firstText(postEl, [
+        ".update-components-actor__sub-description",
+        ".feed-shared-actor__sub-description",
+        ".update-components-actor__sub-description span[aria-hidden='true']",
+        "time",
+      ]) || null;
     let text =
-      clean(textEl) ||
-      clean(
-        postEl.querySelector(
-          ".feed-shared-article__description, .update-components-image__image, .update-components-linkedin-video"
-        )
-      ) ||
+      extractPostText(postEl) ||
+      firstText(postEl, [
+        ".feed-shared-article__description",
+        ".update-components-image__image",
+        ".update-components-linkedin-video",
+      ]) ||
       "";
+
+    const postUrl = url || location.href;
+    const media = extractMedia(postEl);
+    const links = extractLinks(postEl, postUrl);
+
+    if (!text) {
+      text = fallbackTextFromAttachments(media, links);
+    }
 
     if (!text) {
       const bits = [author, authorHeadline].filter(Boolean);
       text = bits.length ? `${PLACEHOLDER}\n${bits.join(" · ")}` : PLACEHOLDER;
     }
 
-    return { url, author, authorHeadline, text, urn };
+    // Extract new metadata fields
+    const publishedDate = extractPublishedDate(postEl);
+    const hashtagsAndMentions = extractHashtagsAndMentions(text);
+    const postType = extractPostType(postEl);
+    const companyInfo = extractCompanyInfo(postEl);
+    const socialCounts = extractSocialCounts(postEl);
+
+    const metadata = compactObject({
+      urn,
+      authorProfileUrl,
+      publishedText,
+      publishedDate,
+      links,
+      capturedAt: new Date().toISOString(),
+      capturedFrom: location.href,
+      socialCounts,
+      postType,
+      companyInfo,
+      hashtags: hashtagsAndMentions.hashtags,
+      mentions: hashtagsAndMentions.mentions,
+    });
+
+    return { url, author, authorHeadline, text, urn, metadata, media };
   };
 })();

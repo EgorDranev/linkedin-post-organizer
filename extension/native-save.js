@@ -2,7 +2,6 @@
 (function () {
   const LIS = (globalThis.LIS = globalThis.LIS || {});
 
-  const HOOK_FLAG = "data-lis-native-hook";
   const MENU_HOOK_FLAG = "data-lis-menu-hook";
   const CONTEXT_TTL_MS = 20000;
   const recentContext = { postEl: null, at: 0 };
@@ -21,7 +20,7 @@
   ].join(", ");
 
   const OVERFLOW_TRIGGER =
-    ".feed-shared-control-menu__trigger, button.feed-shared-control-menu__trigger, button[aria-label*='control menu' i], button[aria-label*='Open control menu' i]";
+    ".feed-shared-control-menu__trigger, button.feed-shared-control-menu__trigger, button.artdeco-dropdown__trigger, button[aria-label*='control menu' i], button[aria-label*='Open control menu' i], button[aria-label*='more actions' i]";
 
   function rememberPost(postEl) {
     if (!postEl) return;
@@ -33,11 +32,82 @@
     rememberPost(LIS.findPostFrom(target));
   }
 
+  function rememberPostAtPoint(x, y) {
+    rememberPost(LIS.findPostNearPoint?.(x, y));
+  }
+
   function resolvePostFromContext(target) {
     const direct = LIS.findPostFrom(target);
     if (direct) return direct;
     const fresh = Date.now() - recentContext.at < CONTEXT_TTL_MS;
     return fresh ? recentContext.postEl : null;
+  }
+
+  function isVisible(el) {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  /** Menu is portaled outside the post — find the ⋯ trigger that opened it. */
+  function resolvePostFromOpenMenu() {
+    const activePost = LIS.findPostFrom(document.activeElement);
+    if (activePost) return activePost;
+
+    for (const trigger of document.querySelectorAll(
+      `${OVERFLOW_TRIGGER}, button.artdeco-dropdown__trigger`
+    )) {
+      if (trigger.getAttribute("aria-expanded") !== "true") continue;
+      const post = LIS.findPostFrom(trigger);
+      if (post) return post;
+    }
+
+    for (const menu of document.querySelectorAll(
+      "[role='menu'], .artdeco-dropdown__content"
+    )) {
+      if (!isVisible(menu)) continue;
+      const id = menu.id;
+      if (!id) continue;
+      const trigger = document.querySelector(`[aria-controls="${CSS.escape(id)}"]`);
+      const post = LIS.findPostFrom(trigger);
+      if (post) return post;
+    }
+
+    const openMenu = [...document.querySelectorAll(MENU_ROOT)].find(isVisible);
+    if (openMenu) {
+      const mr = openMenu.getBoundingClientRect();
+      let nearest = null;
+      let best = Infinity;
+      for (const post of LIS.findPosts()) {
+        const pr = post.getBoundingClientRect();
+        const dy = Math.abs((pr.top + pr.bottom) / 2 - (mr.top + mr.bottom) / 2);
+        const dx =
+          pr.right < mr.left
+            ? mr.left - pr.right
+            : mr.right < pr.left
+              ? pr.left - mr.right
+              : 0;
+        const score = dy * dy + dx * dx;
+        if (score < best) {
+          best = score;
+          nearest = post;
+        }
+      }
+      if (nearest && best < 800_000) return nearest;
+      const fallback = LIS.findBestPostCandidate?.(openMenu);
+      if (fallback) return fallback;
+    }
+
+    return null;
+  }
+
+  function resolvePostForSave(target) {
+    return (
+      resolvePostFromContext(target) ||
+      resolvePostFromOpenMenu() ||
+      LIS.findBestPostCandidate?.(getActionElement(target)) ||
+      null
+    );
   }
 
   function getActionElement(target) {
@@ -76,7 +146,7 @@
   }
 
   function isUnsaveIntentText(text) {
-    return /unsave|remove\s+bookmark|unbookmark|удал|збережено/i.test(text);
+    return /\bsaved\b|unsave|remove\s+bookmark|unbookmark|удал|збережено/i.test(text);
   }
 
   function hasSaveSemantics(el) {
@@ -143,7 +213,9 @@
   };
 
   function attachOverflowTriggerHook(postEl) {
-    const triggers = postEl.querySelectorAll(OVERFLOW_TRIGGER);
+    const triggers = postEl.querySelectorAll(
+      `${OVERFLOW_TRIGGER}, button.artdeco-dropdown__trigger`
+    );
     for (const trigger of triggers) {
       if (trigger.hasAttribute(MENU_HOOK_FLAG)) continue;
       trigger.setAttribute(MENU_HOOK_FLAG, "1");
@@ -155,12 +227,25 @@
     }
   }
 
-  function attachSaveObserver(postEl) {
-    if (postEl.hasAttribute(HOOK_FLAG)) return;
-    postEl.setAttribute(HOOK_FLAG, "1");
+  // postEl -> { btn, observer } for the Save button we're currently watching.
+  // Keyed weakly so detached posts (feed recycling) drop out on GC.
+  const observedPosts = new WeakMap();
 
+  function attachSaveObserver(postEl) {
+    // Fast path: already watching a live button on this post. Avoids re-scanning
+    // on every feed mutation once a post is hooked.
+    const existing = observedPosts.get(postEl);
+    if (existing && existing.btn.isConnected) return;
+
+    // The social bar (and its Save button) is lazy-rendered, so a freshly
+    // injected feed post often has no button yet on the first pass. Don't flag
+    // the post as done — keep retrying on later mutations until it appears.
     const btn = LIS.findSaveButton(postEl);
     if (!btn) return;
+
+    // The button we were watching was replaced by an in-place re-render
+    // (auto-refreshing feed). Drop the stale observer before rebinding.
+    if (existing) existing.observer.disconnect();
 
     let wasSaved = isSavedState(btn);
     const observer = new MutationObserver(() => {
@@ -173,6 +258,7 @@
       attributes: true,
       attributeFilter: ["aria-label", "aria-pressed", "class"],
     });
+    observedPosts.set(postEl, { btn, observer });
   }
 
   LIS.hookPost = function hookPost(postEl) {
@@ -187,14 +273,15 @@
   function handleSaveClick(target) {
     if (!LIS.isNativeSaveClick(target)) return;
 
-    const postEl = resolvePostFromContext(target);
+    const postEl = resolvePostForSave(target);
     if (!postEl) {
       LIS.showToast(
-        "LinkedIn Saver: open ⋯ on the post, then tap Save again",
+        "LinkedIn Saver: couldn't find the post — try ⋯ → Save again",
         "error"
       );
       return;
     }
+    rememberPost(postEl);
 
     LIS.showToast("LinkedIn Saver: capturing saved post…", "info");
     LIS.capturePost(postEl).then((resp) => {
@@ -206,16 +293,33 @@
     const trigger = event.target?.closest?.(OVERFLOW_TRIGGER);
     if (trigger) rememberPostContext(trigger);
     else rememberPostContext(event.target);
+    rememberPostAtPoint(event.clientX, event.clientY);
 
     handleSaveClick(event.target);
   };
 
   document.addEventListener("click", LIS.onNativeSaveClick, true);
   document.addEventListener(
+    "mouseover",
+    (e) => {
+      const post =
+        LIS.findPostFrom(e.target) ||
+        LIS.findPostNearPoint?.(e.clientX, e.clientY);
+      if (post) rememberPost(post);
+    },
+    true
+  );
+  document.addEventListener(
     "pointerdown",
     (e) => {
-      const trigger = e.target?.closest?.(OVERFLOW_TRIGGER);
-      if (trigger) rememberPostContext(trigger);
+      const post =
+        LIS.findPostFrom(e.target) ||
+        LIS.findPostNearPoint?.(e.clientX, e.clientY);
+      if (post) rememberPost(post);
+      const trigger = e.target?.closest?.(
+        `${OVERFLOW_TRIGGER}, button.artdeco-dropdown__trigger`
+      );
+      if (trigger) rememberPost(LIS.findPostFrom(trigger) || post);
     },
     true
   );
