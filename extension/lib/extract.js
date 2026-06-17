@@ -373,6 +373,31 @@
     return !/(profile|avatar|emoji|logo|icon)/.test(label);
   }
 
+  // The author's avatar is deliberately excluded from post media (isPostImage
+  // filters out profile/avatar images), so capture it separately here. Works on
+  // both feed posts and saved-list cards via their respective actor blocks.
+  function extractAvatar(scope) {
+    const selectors = [
+      ".update-components-actor__avatar img",
+      ".update-components-actor__avatar-image",
+      ".feed-shared-actor__avatar img",
+      ".feed-shared-actor__avatar-image",
+      ".presence-entity__image",
+      ".entity-result__universal-image img",
+      ".entity-result__image img",
+      ".ivm-view-attr__img--centered",
+      "img[class*='EntityPhoto']",
+    ];
+    for (const selector of selectors) {
+      const img = scope?.querySelector?.(selector);
+      if (!img) continue;
+      const url = imageUrl(img);
+      // Skip lazy-load ghosts (data: placeholders) — only real CDN photos.
+      if (url && /^https?:/i.test(url)) return url;
+    }
+    return "";
+  }
+
   function isChromeText(text) {
     return /^(like|comment|repost|send|save|follow|connect|message|open|share|copy link|report|not interested|turn on notifications|view profile)$/i.test(
       text
@@ -1025,6 +1050,7 @@
       urn,
       authorProfileUrl:
         firstHref(card, ["a[href*='/in/']", "a[href*='/company/']"]) || null,
+      authorImage: extractAvatar(card) || null,
       links,
       capturedAt: new Date().toISOString(),
       capturedFrom: location.href,
@@ -1098,6 +1124,7 @@
     const metadata = compactObject({
       urn,
       authorProfileUrl,
+      authorImage: extractAvatar(postEl),
       publishedText,
       publishedDate,
       links,
