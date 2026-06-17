@@ -128,6 +128,7 @@ function readableText(text) {
       .replace(/\r\n?/g, "\n")
       .replace(/[ \t]+/g, " ")
       .replace(/\bView image\b\s*/gi, "")
+      .replace(/^[ \t]*View Sponsored Content[ \t]*$/gim, "")
       .replace(/[ \t]+\n/g, "\n")
       .replace(/\n[ \t]+/g, "\n")
       .replace(/\n{3,}/g, "\n\n")
@@ -155,11 +156,15 @@ function classifyBlock(block, index) {
 }
 
 function textBlocks(text) {
-  return readableText(text)
-    .split(/\n{2,}/)
+  const clean = readableText(text);
+  // Author paragraphs (blank lines) when the capture preserved them; otherwise
+  // every line break becomes its own block, so single-newline captures get the
+  // same airy paragraph spacing instead of stacking into one cramped wall.
+  const parts = clean.includes("\n\n") ? clean.split(/\n{2,}/) : clean.split(/\n+/);
+  return parts
     .map((block) => block.trim())
     .filter(Boolean)
-    .map((text, index) => ({ text, kind: classifyBlock(text, index) }));
+    .map((value, index) => ({ text: value, kind: classifyBlock(value, index) }));
 }
 
 function previewTitle(blocks, media, post) {
