@@ -716,6 +716,14 @@ textarea:focus {
     radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.32), transparent 18px),
     linear-gradient(145deg, #6d4ad9, #075b82 58%, #172b19);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.card-avatar--photo { background: var(--surface-2); }
+.card-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
 }
 .card-id-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .card-id-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }

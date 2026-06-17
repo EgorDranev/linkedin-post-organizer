@@ -409,6 +409,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
+  const [avatarBroken, setAvatarBroken] = useState(false);
 
   const displayText = useMemo(() => readableText(post.text), [post.text]);
   const displayBlocks = useMemo(() => textBlocks(displayText), [displayText]);
@@ -423,6 +424,10 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const author = deriveAuthor(post);
   const source = hostFromUrl(post.url) || hostFromUrl(links[0]?.url) || "LinkedIn";
   const monogram = (author || source || "L").trim().charAt(0).toUpperCase();
+  // Author avatar captured from LinkedIn; falls back to the monogram when it's
+  // missing (older saves) or the CDN URL has expired (onError).
+  const authorImage = post.metadata?.authorImage || "";
+  const showAvatar = Boolean(authorImage) && !avatarBroken;
   const savedDate = new Date(post.savedAt).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -560,8 +565,22 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     <article className="card linkedmash-card">
       <div className="card-content">
         <div className="card-id">
-          <span className="card-avatar" aria-hidden="true">
-            {monogram}
+          <span
+            className={`card-avatar${showAvatar ? " card-avatar--photo" : ""}`}
+            aria-hidden="true"
+          >
+            {showAvatar ? (
+              <img
+                className="card-avatar-img"
+                src={authorImage}
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={() => setAvatarBroken(true)}
+              />
+            ) : (
+              monogram
+            )}
           </span>
           <div className="card-id-main">
             <div className="card-id-line">
