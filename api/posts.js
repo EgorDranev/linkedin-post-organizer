@@ -1,5 +1,6 @@
 import { 
   ensureSchema, 
+  hasDatabase,
   sql, 
   allTags, 
   hydrate, 
@@ -8,8 +9,50 @@ import {
   addPostToCollection,
   getCollectionsForPost
 } from "./_lib/db.js";
-import { suggestTags } from "./_lib/tagger.js";
+import { suggestTagsAI } from "./_lib/ai.js";
 import { requireAuth } from "./_lib/auth.js";
+
+const previewPosts = [
+  {
+    id: "preview-1",
+    url: "https://www.linkedin.com/feed/update/urn:li:activity:preview/",
+    author: "Khizer Abbas",
+    authorHeadline: "Growing newsletter with Paid Ads",
+    text:
+      "Claude Code can block its own bad actions before they run.\n\n" +
+      "It's called Hooks, and almost no one is using them.\n\n" +
+      "Here's the full Claude Code workflow most engineers are missing:\n" +
+      "1. Getting Started\n" +
+      "One curl command to install (Node 18+ required)\n" +
+      "Run /init -> Claude scans your codebase and builds a memory file\n\n" +
+      "2. CLAUDE.md\n" +
+      "Loads every session automatically\n" +
+      "Store your stack, architecture, and gotchas here\n" +
+      "Skip this and your results stay inconsistent\n\n" +
+      "3. Daily Workflow\n" +
+      "Shift + Tab + Tab -> Plan Mode before code gets written\n" +
+      "/compact to compress context, Esc Esc to rewind\n" +
+      "New session per feature, commit frequently\n\n" +
+      "4. Hooks\n" +
+      "Run before or after tool use\n" +
+      "Exit code 0 = allow, exit code 2 = block\n" +
+      "Your guardrails that Claude won't override\n\n" +
+      "5. 4-Layer Architecture\n" +
+      "L1 CLAUDE.md -> L2 Skills -> L3 Hooks -> L4 Agents",
+    savedAt: "2026-06-08T12:00:00.000Z",
+    status: "review",
+    tags: ["claude code", "workflow"],
+    collections: [],
+    suggested: [{ tag: "ai" }],
+    metadata: {
+      authorProfileUrl: "https://www.linkedin.com/in/khizer-abbas/",
+      hashtags: ["ClaudeCode"],
+      publishedText: "Jun 8 2026",
+      socialCounts: { reactions: "42", comments: "7" },
+    },
+    media: [],
+  },
+];
 
 function cleanJsonObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -57,15 +100,22 @@ function cleanPostUrl(value, metadata) {
 
 export default async function handler(req, res) {
   if (!requireAuth(req, res)) return;
-  await ensureSchema();
 
   if (req.method === "GET") {
+    if (!hasDatabase) return res.status(200).json(previewPosts);
+
+    await ensureSchema();
     const rows = await sql`SELECT * FROM posts ORDER BY saved_at DESC, id DESC`;
     const posts = await Promise.all(rows.map(hydrate));
     return res.status(200).json(posts);
   }
 
   if (req.method === "POST") {
+    if (!hasDatabase) {
+      return res.status(503).json({ error: "Database connection string is not configured" });
+    }
+
+    await ensureSchema();
     const { url, author, authorHeadline, text } = req.body || {};
     const createOnly = req.body?.createOnly === true;
     const metadata = cleanJsonObject(req.body?.metadata);
@@ -79,7 +129,7 @@ export default async function handler(req, res) {
 
     const tags = await allTags();
     const suggestions = JSON.stringify(
-      suggestTags(text, { existingTags: tags, author })
+      await suggestTagsAI(text, { existingTags: tags, author })
     );
 
     const existing = postUrl

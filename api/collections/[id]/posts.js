@@ -1,9 +1,8 @@
 import { 
   ensureSchema, 
-  getPostsInCollection,
-  hydrate
-} from "./_lib/db.js";
-import { requireAuth } from "./_lib/auth.js";
+  getPostsInCollection
+} from "../../_lib/db.js";
+import { requireAuth } from "../../_lib/auth.js";
 
 export default async function handler(req, res) {
   if (!requireAuth(req, res)) return;

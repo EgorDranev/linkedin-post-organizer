@@ -1,4 +1,61 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { neon } from "@neondatabase/serverless";
+
+function localEnvCandidates() {
+  const starts = [process.cwd(), dirname(fileURLToPath(import.meta.url))];
+  const seen = new Set();
+  const files = [];
+
+  for (const start of starts) {
+    let dir = start;
+    for (let depth = 0; depth < 6; depth += 1) {
+      for (const name of [".env.local", ".env"]) {
+        const file = join(dir, name);
+        if (!seen.has(file)) {
+          seen.add(file);
+          files.push(file);
+        }
+      }
+
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+
+  return files;
+}
+
+function loadLocalEnvIfNeeded() {
+  if (process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL) {
+    return;
+  }
+
+  for (const filename of localEnvCandidates()) {
+    if (!existsSync(filename)) continue;
+
+    for (const line of readFileSync(filename, "utf8").split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (!match) continue;
+
+      const [, key, rawValue] = match;
+      if (process.env[key] !== undefined) continue;
+
+      process.env[key] = rawValue.replace(/^(['"])(.*)\1$/, "$2");
+    }
+
+    if (process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL) {
+      return;
+    }
+  }
+}
+
+loadLocalEnvIfNeeded();
 
 const connectionString =
   process.env.DATABASE_URL ||
@@ -11,7 +68,12 @@ if (!connectionString) {
   );
 }
 
-export const sql = neon(connectionString);
+export const hasDatabase = Boolean(connectionString);
+export const sql = hasDatabase
+  ? neon(connectionString)
+  : async () => {
+      throw new Error("Database connection string is not configured");
+    };
 
 // --- lazy schema init (idempotent, runs once per cold start) ---------------
 

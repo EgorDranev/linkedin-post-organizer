@@ -13,6 +13,7 @@ const els = {
   status: document.getElementById("status"),
   verifyHint: document.getElementById("verifyHint"),
   doneStatus: document.getElementById("doneStatus"),
+  importStatus: document.getElementById("importStatus"),
   reconfigure: document.getElementById("reconfigure"),
   nav: document.getElementById("nav"),
   back: document.getElementById("back"),
@@ -55,8 +56,11 @@ function render() {
   });
 
   // The final step carries its own actions, so the shared nav is hidden there.
+  // The stepper is part of the wizard, not the finished state — hide it too so
+  // returning users don't see a meaningless "progress" bar on a done screen.
   const onDone = step === STEP_COUNT - 1;
   els.nav.style.display = onDone ? "none" : "flex";
+  els.stepper.style.display = onDone ? "none" : "flex";
   els.back.style.display = step === 0 ? "none" : "";
 
   if (step === 2) {
@@ -117,11 +121,14 @@ async function runVerify() {
 
 function hydrateDone() {
   els.open.href = normalize(els.server.value);
+  // The badge draws its own status dot via ::before, so no leading "●" here.
   els.doneStatus.textContent =
     verifyState === "nogate"
-      ? "● Connected — no password required"
-      : "● Connected & authorized";
-  els.doneStatus.className = "status ok";
+      ? "Connected — no password required"
+      : "Connected & authorized";
+  els.doneStatus.className = "badge ok";
+  els.importStatus.textContent = "";
+  els.importStatus.className = "import-status";
 }
 
 function sendImportMessage(tabId) {
@@ -197,16 +204,19 @@ els.autoCapture.addEventListener("change", () => {
   chrome.storage.local.set({ autoCapture: els.autoCapture.checked });
 });
 
+function setImportStatus(text, kind) {
+  els.importStatus.textContent = text;
+  els.importStatus.className = `import-status${kind ? ` ${kind}` : ""}`;
+}
+
 els.importSaved.addEventListener("click", async () => {
   els.importSaved.disabled = true;
-  els.doneStatus.textContent = "Starting saved-posts import…";
-  els.doneStatus.className = "status";
+  setImportStatus("Starting saved-posts import…");
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id || !/^https:\/\/(?:www\.)?linkedin\.com\//i.test(tab.url || "")) {
     await chrome.tabs.create({ url: "https://www.linkedin.com/my-items/saved-posts/" });
-    els.doneStatus.textContent = "Open the new LinkedIn saved-posts tab, then click import.";
-    els.doneStatus.className = "status";
+    setImportStatus("Opened your LinkedIn saved posts — switch to that tab, then import.");
     els.importSaved.disabled = false;
     return;
   }
@@ -220,19 +230,19 @@ els.importSaved.addEventListener("click", async () => {
 
     els.importSaved.disabled = false;
     if (!resp.ok) {
-      els.doneStatus.textContent = "Could not start import on this tab.";
-      els.doneStatus.className = "status bad";
+      setImportStatus("Could not start import on this tab.", "bad");
       return;
     }
     const { added = 0, updated = 0, skipped = 0, failed = 0 } = resp.stats || {};
-    els.doneStatus.textContent = `Import done: ${added} added, ${updated} updated, ${skipped} skipped${
-      failed ? `, ${failed} failed` : ""
-    }.`;
-    els.doneStatus.className = failed ? "status bad" : "status ok";
+    setImportStatus(
+      `Import done: ${added} added, ${updated} updated, ${skipped} skipped${
+        failed ? `, ${failed} failed` : ""
+      }.`,
+      failed ? "bad" : "ok",
+    );
   } catch (err) {
     els.importSaved.disabled = false;
-    els.doneStatus.textContent = err?.message || "Could not start import on this tab.";
-    els.doneStatus.className = "status bad";
+    setImportStatus(err?.message || "Could not start import on this tab.", "bad");
   }
 });
 
