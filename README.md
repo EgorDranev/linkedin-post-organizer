@@ -1,4 +1,4 @@
-# LinkedIn Saver
+# LinkedIn Posts Organizer
 
 **[Live demo](https://linkedin-saver.vercel.app)** (password-protected) · **[Case study](CASE_STUDY.md)** · MIT licensed
 
