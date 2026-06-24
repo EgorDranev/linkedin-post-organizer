@@ -721,26 +721,154 @@
     };
   }
 
-  function extractPostType(postEl) {
-    // Check for various post types based on elements present
-    if (postEl.querySelector('video, .feed-shared-linkedin-video')) {
-      return 'video';
-    } else if (postEl.querySelector('img, .feed-shared-image')) {
-      if (postEl.querySelector('.feed-shared-article')) {
-        return 'image_with_article';
-      }
-      return 'image';
-    } else if (postEl.querySelector('.feed-shared-article, .update-components-article')) {
-      return 'article';
-    } else if (postEl.querySelector('.feed-shared-external-video, .update-components-external-video')) {
-      return 'external_video';
-    } else if (postEl.querySelector('.update-components-document')) {
-      return 'document';
-    } else if (extractMedia(postEl).length > 0) {
-      return 'media';
-    } else {
-      return 'text';
+  function matchesAny(el, selectors) {
+    const sel = selectors.join(", ");
+    return Boolean(el?.matches?.(sel) || el?.querySelector?.(sel));
+  }
+
+  // True only for genuine reposts (quote or no-comment), not occasion cards.
+  function isReshare(postEl) {
+    if (!postEl?.querySelector) return false;
+
+    // Quote repost: a second update container nested inside the outer one.
+    if (
+      postEl.querySelector(".feed-shared-update-v2 .feed-shared-update-v2") ||
+      postEl.querySelector(".update-components-update-v2 .update-components-update-v2")
+    ) {
+      return true;
     }
+
+    // Repost without comment: original wrapped in a mini-update that still
+    // carries the original author's actor. Occasion/celebration cards reuse the
+    // mini-update shell but are not reshares — exclude them.
+    const mini = postEl.querySelector(
+      ".update-components-mini-update-v2, .feed-shared-mini-update-v2"
+    );
+    if (
+      mini &&
+      !mini.matches(
+        ".update-components-mini-update-v2--occasion, .feed-shared-mini-update-v2--occasion"
+      ) &&
+      mini.querySelector(".update-components-actor, .feed-shared-actor")
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // A content image the post itself attached — not an article/document thumbnail
+  // and not an avatar inside the actor block.
+  function hasContentImage(postEl) {
+    if (matchesAny(postEl, [".feed-shared-image", ".update-components-image"])) {
+      return true;
+    }
+    for (const img of postEl?.querySelectorAll?.("img") || []) {
+      if (
+        img.closest(
+          ".feed-shared-article, .update-components-article, .update-components-document, .document-s-container, .update-components-actor, .feed-shared-actor"
+        )
+      ) {
+        continue;
+      }
+      if (isPostImage(img)) return true;
+    }
+    return false;
+  }
+
+  function hasArticleCard(postEl) {
+    return matchesAny(postEl, [
+      ".feed-shared-article",
+      ".update-components-article",
+    ]);
+  }
+
+  // Ordered most-specific → least-specific; first matching rule wins. Reshare is
+  // checked first so a repost is classified by its structure, not its payload.
+  const POST_TYPE_RULES = [
+    ["reshare", isReshare],
+    [
+      "poll",
+      (el) =>
+        matchesAny(el, [
+          ".feed-shared-poll",
+          ".update-components-poll",
+          "[data-test-id*='poll' i]",
+        ]),
+    ],
+    [
+      "celebration",
+      (el) =>
+        matchesAny(el, [
+          ".feed-shared-celebration",
+          ".update-components-celebration",
+          ".feed-shared-occasion",
+          ".update-components-occasion",
+          ".update-components-mini-update-v2--occasion",
+          ".feed-shared-mini-update-v2--occasion",
+        ]),
+    ],
+    [
+      "event",
+      (el) =>
+        matchesAny(el, [
+          ".feed-shared-event",
+          ".update-components-event",
+          ".feed-shared-update-v2__content--event",
+        ]),
+    ],
+    [
+      "newsletter",
+      (el) =>
+        matchesAny(el, [
+          ".feed-shared-newsletter",
+          ".update-components-newsletter",
+          ".update-components-article--newsletter",
+        ]),
+    ],
+    [
+      "document",
+      (el) =>
+        matchesAny(el, [
+          ".update-components-document",
+          ".feed-shared-document",
+          ".document-s-container",
+          "[data-test-id*='document' i]",
+        ]),
+    ],
+    [
+      "external_video",
+      (el) =>
+        matchesAny(el, [
+          ".feed-shared-external-video",
+          ".update-components-external-video",
+        ]),
+    ],
+    [
+      "video",
+      (el) =>
+        matchesAny(el, [
+          "video",
+          ".feed-shared-linkedin-video",
+          ".update-components-linkedin-video",
+        ]),
+    ],
+    ["image_with_article", (el) => hasArticleCard(el) && hasContentImage(el)],
+    ["article", (el) => hasArticleCard(el)],
+    ["image", (el) => hasContentImage(el)],
+  ];
+
+  function extractPostType(postEl) {
+    if (!postEl) return "text";
+    for (const [type, test] of POST_TYPE_RULES) {
+      try {
+        if (test(postEl)) return type;
+      } catch {
+        /* a single rule failing must not break classification */
+      }
+    }
+    if (extractMedia(postEl).length > 0) return "media";
+    return "text";
   }
 
   function extractPublishedDate(postEl) {

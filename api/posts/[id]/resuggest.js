@@ -1,5 +1,5 @@
 import { ensureSchema, sql, allTags, getPost } from "../../_lib/db.js";
-import { suggestTags } from "../../_lib/tagger.js";
+import { suggestTagsAI } from "../../_lib/ai.js";
 import { requireAuth } from "../../_lib/auth.js";
 
 export default async function handler(req, res) {
@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   if (!post) return res.status(404).json({ error: "not found" });
 
   const suggestions = JSON.stringify(
-    suggestTags(post.text, {
+    await suggestTagsAI(post.text, {
       existingTags: await allTags(),
       author: post.author,
     })

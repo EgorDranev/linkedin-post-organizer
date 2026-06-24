@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vercel dev",
+    "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview",
     "ship": "node scripts/ship.mjs",
-    "ext:watch": "node scripts/ext-watch.mjs"
+    "ext:watch": "node scripts/ext-watch.mjs",
+    "export": "node scripts/export-saved.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

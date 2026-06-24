@@ -3,128 +3,249 @@
   <head>
     <meta charset="utf-8" />
     <style>
-      body {
-        font: 14px Inter, -apple-system, sans-serif;
-        width: 260px;
-        margin: 0;
-        padding: 14px;
-        color: #1d2226;
+      :root {
+        --brand: #0a66c2;
+        --brand-hover: #004182;
+        --ink: #1d2226;
+        --muted: #5e6b74;
+        --faint: #8a96a0;
+        --line: #e3e6ea;
+        --bg-soft: #f3f6f8;
+        --ok: #057642;
+        --ok-soft: #e7f5ec;
+        --bad: #b42318;
+        --bad-soft: #fdeceb;
       }
-      h1 { font-size: 15px; margin: 0 0 10px; }
+
+      * { box-sizing: border-box; }
+
+      body {
+        font: 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+        width: 300px;
+        margin: 0;
+        padding: 16px;
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 14px;
+      }
+      .brand .mark {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        background: var(--brand);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+      }
+      .brand h1 { font-size: 15px; font-weight: 600; margin: 0; }
 
       /* Step progress */
-      .stepper { display: flex; gap: 6px; margin: 0 0 14px; }
+      .stepper { display: flex; gap: 5px; margin: 0 0 16px; }
       .dot {
-        height: 5px;
+        height: 4px;
         flex: 1;
         border-radius: 3px;
-        background: #e3e6ea;
+        background: var(--line);
         transition: background 0.15s ease;
       }
       .dot.done,
-      .dot.current { background: #0a66c2; }
+      .dot.current { background: var(--brand); }
 
-      .step-title { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+      .step-title { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+      .lead { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
 
       /* Steps: only the active one is shown */
       .step { display: none; }
       .step.active { display: block; }
 
-      .status { font-size: 13px; margin: 6px 0; }
-      .ok { color: #0a7d3c; }
-      .bad { color: #c0392b; }
-      .err { color: #c0392b; font-size: 12px; margin-top: 6px; min-height: 14px; }
+      .status { font-size: 13px; margin: 8px 0; }
+      .status.ok { color: var(--ok); }
+      .status.bad { color: var(--bad); }
+      .err { color: var(--bad); font-size: 12px; margin-top: 6px; min-height: 14px; }
 
-      label { display: block; font-size: 12px; color: #6b7280; margin: 10px 0 4px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
       input[type="text"],
       input[type="password"] {
         width: 100%;
-        box-sizing: border-box;
-        border: 1px solid #e3e6ea;
-        border-radius: 6px;
-        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 10px;
         font: inherit;
         font-size: 13px;
+        color: var(--ink);
       }
-      .row {
+      input[type="text"]:focus,
+      input[type="password"]:focus {
+        outline: none;
+        border-color: var(--brand);
+        box-shadow: 0 0 0 3px rgba(10, 102, 194, 0.12);
+      }
+
+      /* Button system */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 100%;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 9px 14px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.2;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 0.12s ease, border-color 0.12s ease;
+      }
+      .btn-primary { background: var(--brand); color: #fff; }
+      .btn-primary:hover { background: var(--brand-hover); }
+      .btn-secondary {
+        background: #fff;
+        color: var(--brand);
+        border-color: var(--line);
+      }
+      .btn-secondary:hover { background: var(--bg-soft); border-color: #c4cdd5; }
+      .btn-ghost {
+        background: #fff;
+        color: var(--muted);
+        border-color: var(--line);
+      }
+      .btn-ghost:hover { background: var(--bg-soft); }
+      .btn:disabled { opacity: 0.55; cursor: default; }
+
+      .btn-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--brand);
+        text-decoration: none;
+      }
+      .btn-link:hover { text-decoration: underline; }
+
+      /* Connection badge */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 999px;
+        margin: 0 0 12px;
+      }
+      .badge::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .badge.ok { color: var(--ok); background: var(--ok-soft); }
+      .badge.bad { color: var(--bad); background: var(--bad-soft); }
+
+      /* Settings row with toggle */
+      .setting {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-top: 12px;
-        font-size: 13px;
+        gap: 12px;
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        margin: 14px 0;
       }
-      .row input { width: auto; margin: 0; }
-      .row input[type="checkbox"] {
-        appearance: none;
-        -webkit-appearance: none;
-        flex: 0 0 auto;
-        position: relative;
-        width: 16px;
-        height: 16px;
-        border: 1px solid #c4cdd5;
-        border-radius: 4px;
-        background: #fff;
+      .setting-text { flex: 1; min-width: 0; }
+      .setting-label { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+      .setting-sub { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.3; margin-top: 1px; }
+
+      .switch { position: relative; flex: 0 0 auto; width: 36px; height: 20px; }
+      .switch input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
         cursor: pointer;
       }
-      .row input[type="checkbox"]:checked {
-        background: #0a66c2;
-        border-color: #0a66c2;
+      .switch .track {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+        background: #c4cdd5;
+        transition: background 0.15s ease;
+        pointer-events: none;
       }
-      .row input[type="checkbox"]:checked::after {
+      .switch .track::after {
         content: "";
         position: absolute;
-        left: 5px;
         top: 2px;
-        width: 3px;
-        height: 7px;
-        border: solid #fff;
-        border-width: 0 2px 2px 0;
-        transform: rotate(45deg);
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        transition: transform 0.15s ease;
       }
-      .row input[type="checkbox"]:focus-visible {
+      .switch input:checked + .track { background: var(--brand); }
+      .switch input:checked + .track::after { transform: translateX(16px); }
+      .switch input:focus-visible + .track {
         outline: 2px solid rgba(10, 102, 194, 0.35);
         outline-offset: 2px;
       }
 
-      button {
-        background: #0a66c2;
-        color: #fff;
-        border: none;
-        border-radius: 6px;
-        padding: 6px 12px;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
+      /* Done-screen action stack */
+      .actions { display: flex; flex-direction: column; gap: 10px; }
+      .backfill {
+        border-top: 1px solid #eef1f3;
+        padding-top: 12px;
+        margin-top: 2px;
       }
-      button.secondary {
-        width: 100%;
-        margin-top: 12px;
-        background: #1f7a4d;
+      .caption { font-size: 11.5px; color: var(--muted); margin: 7px 0 0; line-height: 1.4; }
+      .import-status { font-size: 12px; margin-top: 8px; }
+      .import-status.ok { color: var(--ok); }
+      .import-status.bad { color: var(--bad); }
+      .linkedin-link { margin-top: 12px; }
+
+      .foot {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid #eef1f3;
       }
-      button.ghost {
-        background: #fff;
-        color: #0a66c2;
-        border: 1px solid #e3e6ea;
+      .muted {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+        text-decoration: none;
       }
-      button:disabled {
-        opacity: 0.6;
-        cursor: default;
-      }
+      .muted:hover { color: var(--ink); text-decoration: underline; }
+
+      p.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; line-height: 1.45; }
 
       /* Wizard navigation footer */
-      .nav { display: flex; gap: 8px; margin-top: 16px; }
-      .nav button { margin-top: 0; }
-      #back { flex: 0 0 auto; }
+      .nav { display: flex; gap: 8px; margin-top: 18px; }
+      #back { flex: 0 0 auto; width: auto; }
       #next,
       #retry { flex: 1; }
-
-      a { display: block; margin-top: 10px; color: #0a66c2; text-decoration: none; font-weight: 600; }
-      a.muted { font-weight: 500; font-size: 12px; color: #6b7280; }
-      p.hint { color: #6b7280; font-size: 12px; margin: 8px 0 0; line-height: 1.4; }
     </style>
   </head>
   <body>
-    <h1>LinkedIn Saver</h1>
+    <div class="brand">
+      <span class="mark">in</span>
+      <h1>LinkedIn Saver</h1>
+    </div>
 
     <div class="stepper" id="stepper"></div>
 
@@ -154,34 +275,48 @@
 
     <!-- Step 4: done / first action -->
     <section class="step" data-step="3">
+      <span class="badge ok" id="doneStatus">Connected &amp; authorized</span>
       <p class="step-title">You're all set</p>
-      <div class="status ok" id="doneStatus">● Connected</div>
+      <p class="lead">Save any post on LinkedIn and it lands in your app — automatically.</p>
 
-      <div class="row">
-        <input id="autoCapture" type="checkbox" checked />
-        <label for="autoCapture" style="margin: 0; color: #1d2226">Auto-capture native Save</label>
+      <div class="setting">
+        <span class="setting-text">
+          <span class="setting-label">Auto-capture saves</span>
+          <span class="setting-sub">Captures every post you Save on LinkedIn</span>
+        </span>
+        <label class="switch">
+          <input id="autoCapture" type="checkbox" checked />
+          <span class="track"></span>
+        </label>
       </div>
 
-      <button id="importSaved" class="secondary">Import LinkedIn saved posts</button>
+      <div class="actions">
+        <a id="open" class="btn btn-primary" href="#" target="_blank">Open my saved posts →</a>
 
-      <a id="open" href="#" target="_blank">Open my saved posts →</a>
+        <div class="backfill">
+          <button id="importSaved" class="btn btn-secondary">Import older saves</button>
+          <p class="caption">One-time backfill of posts you saved before installing.</p>
+          <div class="import-status" id="importStatus"></div>
+        </div>
+      </div>
+
       <a
         id="openLinkedInSaved"
+        class="btn-link linkedin-link"
         href="https://www.linkedin.com/my-items/saved-posts/"
         target="_blank"
-      >Open LinkedIn saved posts →</a>
-      <p class="hint">
-        On LinkedIn, use the built-in <b>Save</b> on any post — it is sent to your app
-        automatically. To backfill older saves, open LinkedIn saved posts and run import.
-      </p>
-      <a id="reconfigure" class="muted" href="#">Change server / password</a>
+      >View your saved list on LinkedIn ↗</a>
+
+      <div class="foot">
+        <a id="reconfigure" class="muted" href="#">Change server or password</a>
+      </div>
     </section>
 
     <!-- Shared navigation footer -->
     <div class="nav" id="nav">
-      <button id="back" class="ghost">← Back</button>
-      <button id="next">Next →</button>
-      <button id="retry">Retry</button>
+      <button id="back" class="btn btn-ghost">← Back</button>
+      <button id="next" class="btn btn-primary">Next →</button>
+      <button id="retry" class="btn btn-primary">Retry</button>
     </div>
 
     <script src="popup.js"></script>
