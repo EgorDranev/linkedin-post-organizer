@@ -1,8 +1,19 @@
 node_modules/
 dist/
+export/
 .vercel/
 .env
 .env*.local
 *.log
 .DS_Store
 .vercel
+
+# Personal / job-application artifacts — never part of the public showcase
+*.docx
+job-applications/
+CASE_LinkedIn_Saver.md
+build_case_docx.cjs
+
+# AI-tooling scaffolding — kept local, not product code
+.qwen/
+docs/superpowers/
