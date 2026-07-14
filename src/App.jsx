@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Show, UserButton, useAuth } from "@clerk/react";
-import { api, setTokenProvider } from "./api.js";
+import { api, AuthError, setTokenProvider, setUnauthorizedHandler } from "./api.js";
 import { AddForm } from "./AddForm.jsx";
 import { PostCard } from "./PostCard.jsx";
 import { AuthScreen } from "./AuthScreen.jsx";
@@ -48,6 +48,7 @@ export function Library({ accountButton }) {
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // browse state
   const [query, setQuery] = useState("");
@@ -57,6 +58,7 @@ export function Library({ accountButton }) {
   const reload = useCallback(() => {
     setLoading(true);
     setError(null);
+    setSessionExpired(false);
     
     // Load both posts and collections
     Promise.all([
@@ -77,7 +79,16 @@ export function Library({ accountButton }) {
       setCollections(collectionsWithCounts);
     })
     .catch((e) => {
-      setError(e.message);
+      if (e instanceof AuthError) {
+        setPosts([]);
+        setCollections([]);
+        setQuery("");
+        setActiveTags([]);
+        setSelectedCollection(null);
+        setSessionExpired(true);
+      } else {
+        setError(e.message);
+      }
     })
     .finally(() => setLoading(false));
   }, []);
@@ -231,7 +242,7 @@ export function Library({ accountButton }) {
             />
           )}
 
-          {loading && (
+          {loading && !sessionExpired && (
             <div className="state">
               <span className="state-icon"><InboxIcon /></span>
               <p>Loading your saved posts…</p>
@@ -244,7 +255,14 @@ export function Library({ accountButton }) {
             </div>
           )}
 
-          {!loading && !error && posts.length === 0 && (
+          {sessionExpired && (
+            <div className="state">
+              <span className="state-icon"><SearchOffIcon /></span>
+              <p className="error">Your session expired. Sign in again.</p>
+            </div>
+          )}
+
+          {!loading && !error && !sessionExpired && posts.length === 0 && (
             <div className="state">
               <span className="state-icon"><InboxIcon /></span>
               <p>
@@ -254,7 +272,7 @@ export function Library({ accountButton }) {
             </div>
           )}
 
-          {!loading && !error && posts.length > 0 && filtered.length === 0 && (
+          {!loading && !error && !sessionExpired && posts.length > 0 && filtered.length === 0 && (
             <div className="state">
               <span className="state-icon"><SearchOffIcon /></span>
               <p>No posts match these filters.</p>
@@ -305,12 +323,16 @@ export function Library({ accountButton }) {
 }
 
 export default function App() {
-  const { getToken, isLoaded } = useAuth();
+  const { getToken, isLoaded, signOut } = useAuth();
 
   useLayoutEffect(() => {
     setTokenProvider(getToken);
-    return () => setTokenProvider(null);
-  }, [getToken]);
+    setUnauthorizedHandler(signOut);
+    return () => {
+      setTokenProvider(null);
+      setUnauthorizedHandler(null);
+    };
+  }, [getToken, signOut]);
 
   if (!isLoaded) return <div className="app" aria-label="Loading account" />;
 

@@ -1,9 +1,14 @@
 export class AuthError extends Error {}
 
 let tokenProvider = null;
+let unauthorizedHandler = null;
 
 export function setTokenProvider(provider) {
   tokenProvider = provider;
+}
+
+export function setUnauthorizedHandler(handler) {
+  unauthorizedHandler = handler;
 }
 
 const json = (r) => {
@@ -17,6 +22,13 @@ async function request(path, init = {}) {
   const headers = new Headers(init.headers || {});
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(path, { ...init, headers });
+  if (response.status === 401 && unauthorizedHandler) {
+    try {
+      Promise.resolve(unauthorizedHandler()).catch(() => {});
+    } catch {
+      // Preserve the API's AuthError even if session cleanup fails.
+    }
+  }
   return json(response);
 }
 
