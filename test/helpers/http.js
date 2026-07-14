@@ -13,6 +13,7 @@ export function response() {
     },
     setHeader(name, value) {
       this.headers[name.toLowerCase()] = value;
+      return this;
     },
     json(value) {
       this.body = value;
