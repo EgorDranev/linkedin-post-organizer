@@ -16,4 +16,4 @@ build_case_docx.cjs
 
 # AI-tooling scaffolding — kept local, not product code
 .qwen/
-docs/superpowers/
+.superpowers/
