@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, AuthError } from "./api.js";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { Show, UserButton, useAuth } from "@clerk/react";
+import { api, setTokenProvider } from "./api.js";
 import { AddForm } from "./AddForm.jsx";
 import { PostCard } from "./PostCard.jsx";
-import { Login } from "./Login.jsx";
+import { AuthScreen } from "./AuthScreen.jsx";
 import { BrowseControls } from "./BrowseControls.jsx";
 import { exportPostsCsv } from "./exportCsv.js";
 import { CollectionSidebar } from "./CollectionSidebar.jsx";
@@ -29,12 +30,6 @@ const DownloadIcon = () => (
     <path d="M12 15V3" />
   </svg>
 );
-const LockIcon = () => (
-  <svg width="15" height="15" {...ICON}>
-    <rect x="3" y="11" width="18" height="11" rx="2" />
-    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-  </svg>
-);
 const InboxIcon = () => (
   <svg width="22" height="22" {...ICON}>
     <path d="M22 12h-6l-2 3h-4l-2-3H2" />
@@ -48,8 +43,7 @@ const SearchOffIcon = () => (
   </svg>
 );
 
-export default function App() {
-  const [authed, setAuthed] = useState(null); // null = unknown, false = locked, true = ok
+export function Library({ accountButton }) {
   const [posts, setPosts] = useState([]);
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,14 +53,6 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [activeTags, setActiveTags] = useState([]);
   const [selectedCollection, setSelectedCollection] = useState(null);
-
-  // Decide whether to show the login gate.
-  useEffect(() => {
-    api
-      .session()
-      .then(({ authed, gate }) => setAuthed(!gate || authed))
-      .catch(() => setAuthed(true)); // if session check fails, fall through to data load
-  }, []);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -91,19 +77,17 @@ export default function App() {
       setCollections(collectionsWithCounts);
     })
     .catch((e) => {
-      if (e instanceof AuthError) setAuthed(false);
-      else setError(e.message);
+      setError(e.message);
     })
     .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    if (authed) reload();
-  }, [authed, reload]);
+    reload();
+  }, [reload]);
 
   // Pick up posts saved via the extension while this tab was in the background.
   useEffect(() => {
-    if (!authed) return;
     let lastReload = Date.now();
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -114,13 +98,7 @@ export default function App() {
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [authed, reload]);
-
-  const logout = async () => {
-    await api.logout();
-    setAuthed(false);
-    setPosts([]);
-  };
+  }, [reload]);
 
   const onSaved = (post) =>
     setPosts((prev) => [post, ...prev.filter((p) => p.id !== post.id)]);
@@ -193,9 +171,6 @@ export default function App() {
     setSelectedCollection(null);
   };
 
-  if (authed === null) return <div className="app" />;
-  if (authed === false) return <Login onAuthed={() => setAuthed(true)} />;
-
   const filtering = query.trim() !== "" || activeTags.length > 0 || selectedCollection !== null;
   const toReview = filtered.filter((p) => p.status === "review");
   const filed = filtered.filter((p) => p.status === "filed");
@@ -225,10 +200,7 @@ export default function App() {
                 {exportLabel}
               </button>
             )}
-            <button className="topbar-btn logout" onClick={logout}>
-              <LockIcon />
-              Lock
-            </button>
+            {accountButton}
           </div>
         </div>
       </header>
@@ -329,5 +301,27 @@ export default function App() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function App() {
+  const { getToken, isLoaded } = useAuth();
+
+  useLayoutEffect(() => {
+    setTokenProvider(getToken);
+    return () => setTokenProvider(null);
+  }, [getToken]);
+
+  if (!isLoaded) return <div className="app" aria-label="Loading account" />;
+
+  return (
+    <>
+      <Show when="signed-out">
+        <AuthScreen />
+      </Show>
+      <Show when="signed-in">
+        <Library accountButton={<UserButton />} />
+      </Show>
+    </>
   );
 }
