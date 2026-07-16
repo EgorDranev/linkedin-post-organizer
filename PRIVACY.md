@@ -76,10 +76,10 @@ the posts you save, suggesting tags, and powering your own search and export.
 ## Support and contact
 
 - Support and privacy requests: open an issue at
-  <https://github.com/EgorDranev/linkedin-saver/issues>.
+  <https://github.com/EgorDranev/linkedin-post-organizer/issues>.
 - Security reports: please use GitHub's private security-advisory form for this
   repository instead of a public issue —
-  <https://github.com/EgorDranev/linkedin-saver/security/advisories/new>. See
+  <https://github.com/EgorDranev/linkedin-post-organizer/security/advisories/new>. See
   [SECURITY.md](SECURITY.md).
 
 ## Changes to this policy

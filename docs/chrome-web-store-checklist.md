@@ -15,7 +15,7 @@ Work through this list in order for every Store submission. Record results
 - [ ] Single-purpose statement entered: *"Store LinkedIn posts the user
       chooses to bookmark in their private, searchable library."*
 - [ ] Privacy policy URL set to
-      `https://github.com/EgorDranev/linkedin-saver/blob/main/PRIVACY.md`.
+      `https://github.com/EgorDranev/linkedin-post-organizer/blob/main/PRIVACY.md`.
 - [ ] Limited Use disclosure completed: data is captured only on the user's
       explicit Save action, used only to provide the user's private library,
       not used for advertising, and never sold.
@@ -42,7 +42,7 @@ Work through this list in order for every Store submission. Record results
 ## Support
 
 - [ ] Support URL set to
-      `https://github.com/EgorDranev/linkedin-saver/issues`.
+      `https://github.com/EgorDranev/linkedin-post-organizer/issues`.
 - [ ] Support email set and monitored.
 
 ## Pre-submission smoke tests (manual)

@@ -128,7 +128,7 @@ The migration is idempotent — running it twice changes nothing the second time
 
 - [MIT License](LICENSE).
 - Security reports: use GitHub's
-  [private security-advisory form](https://github.com/EgorDranev/linkedin-saver/security/advisories/new)
+  [private security-advisory form](https://github.com/EgorDranev/linkedin-post-organizer/security/advisories/new)
   — see [SECURITY.md](SECURITY.md).
 - Privacy policy: [PRIVACY.md](PRIVACY.md).
-- Everything else: [issues](https://github.com/EgorDranev/linkedin-saver/issues).
+- Everything else: [issues](https://github.com/EgorDranev/linkedin-post-organizer/issues).
