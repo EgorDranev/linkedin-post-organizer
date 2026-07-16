@@ -9,11 +9,9 @@ const els = {
   autoCapture: document.getElementById("autoCapture"),
   open: document.getElementById("open"),
   openLinkedInSaved: document.getElementById("openLinkedInSaved"),
-  importSaved: document.getElementById("importSaved"),
   status: document.getElementById("status"),
   verifyHint: document.getElementById("verifyHint"),
   doneStatus: document.getElementById("doneStatus"),
-  importStatus: document.getElementById("importStatus"),
   reconfigure: document.getElementById("reconfigure"),
   nav: document.getElementById("nav"),
   back: document.getElementById("back"),
@@ -127,37 +125,6 @@ function hydrateDone() {
       ? "Connected — no password required"
       : "Connected & authorized";
   els.doneStatus.className = "badge ok";
-  els.importStatus.textContent = "";
-  els.importStatus.className = "import-status";
-}
-
-function sendImportMessage(tabId) {
-  return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, { type: "import-saved-posts" }, (resp) => {
-      if (chrome.runtime.lastError || !resp?.ok) {
-        resolve({ ok: false, error: chrome.runtime.lastError?.message || "" });
-        return;
-      }
-      resolve(resp);
-    });
-  });
-}
-
-async function ensureImporterInjected(tabId) {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: [
-      "lib/chrome-safe.js",
-      "lib/extract.js",
-      "lib/save.js",
-      "native-save.js",
-      "saved-import.js",
-    ],
-  });
-  await chrome.scripting.insertCSS({
-    target: { tabId },
-    files: ["content.css"],
-  });
 }
 
 // --- Wiring -----------------------------------------------------------------
@@ -202,48 +169,6 @@ els.reconfigure.addEventListener("click", (e) => {
 
 els.autoCapture.addEventListener("change", () => {
   chrome.storage.local.set({ autoCapture: els.autoCapture.checked });
-});
-
-function setImportStatus(text, kind) {
-  els.importStatus.textContent = text;
-  els.importStatus.className = `import-status${kind ? ` ${kind}` : ""}`;
-}
-
-els.importSaved.addEventListener("click", async () => {
-  els.importSaved.disabled = true;
-  setImportStatus("Starting saved-posts import…");
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !/^https:\/\/(?:www\.)?linkedin\.com\//i.test(tab.url || "")) {
-    await chrome.tabs.create({ url: "https://www.linkedin.com/my-items/saved-posts/" });
-    setImportStatus("Opened your LinkedIn saved posts — switch to that tab, then import.");
-    els.importSaved.disabled = false;
-    return;
-  }
-
-  try {
-    let resp = await sendImportMessage(tab.id);
-    if (!resp.ok) {
-      await ensureImporterInjected(tab.id);
-      resp = await sendImportMessage(tab.id);
-    }
-
-    els.importSaved.disabled = false;
-    if (!resp.ok) {
-      setImportStatus("Could not start import on this tab.", "bad");
-      return;
-    }
-    const { added = 0, updated = 0, skipped = 0, failed = 0 } = resp.stats || {};
-    setImportStatus(
-      `Import done: ${added} added, ${updated} updated, ${skipped} skipped${
-        failed ? `, ${failed} failed` : ""
-      }.`,
-      failed ? "bad" : "ok",
-    );
-  } catch (err) {
-    els.importSaved.disabled = false;
-    setImportStatus(err?.message || "Could not start import on this tab.", "bad");
-  }
 });
 
 // --- Init -------------------------------------------------------------------
