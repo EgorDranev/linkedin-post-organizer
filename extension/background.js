@@ -1,15 +1,15 @@
 // Runs in the extension's own origin, so it can POST to the app's API
 // without the page's CORS / mixed-content restrictions.
+//
+// The server origin is fixed at package time (config.js). Auth still uses the
+// stored app password header until paired-account auth replaces it.
 
-const DEFAULT_SERVER = "http://localhost:3000";
+importScripts("config.js");
 
 async function getConfig() {
-  const { serverUrl, appPassword } = await chrome.storage.local.get([
-    "serverUrl",
-    "appPassword",
-  ]);
+  const { appPassword } = await chrome.storage.local.get(["appPassword"]);
   return {
-    server: (serverUrl || DEFAULT_SERVER).replace(/\/$/, ""),
+    server: LIS_CONFIG.appOrigin,
     password: appPassword || "",
   };
 }
