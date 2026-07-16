@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Show, UserButton, useAuth } from "@clerk/react";
 import { api, AuthError, setTokenProvider, setUnauthorizedHandler } from "./api.js";
 import { AddForm } from "./AddForm.jsx";
@@ -115,7 +115,67 @@ export function Library({ accountButton }) {
     setPosts((prev) => [post, ...prev.filter((p) => p.id !== post.id)]);
   const onUpdated = (post) =>
     setPosts((prev) => prev.map((p) => (p.id === post.id ? post : p)));
-  const onDeleted = (id) => setPosts((prev) => prev.filter((p) => p.id !== id));
+
+  // Deleting hides the card immediately but only calls the API after a short
+  // undo window, so a misclick on the trash icon never destroys a saved post.
+  const [toast, setToast] = useState(null);
+  const toastRef = useRef(null);
+  toastRef.current = toast;
+
+  const insertPostAt = (list, index, post) => {
+    const next = list.filter((p) => p.id !== post.id);
+    next.splice(Math.min(index, next.length), 0, post);
+    return next;
+  };
+
+  const performDelete = useCallback((post, index) => {
+    api.deletePost(post.id).catch(() => {
+      // Restore the card so a failed delete never silently loses a post.
+      setPosts((prev) => insertPostAt(prev, index, post));
+      const timer = setTimeout(() => setToast(null), 6000);
+      setToast({
+        type: "error",
+        message: "Couldn’t delete the post — it’s back in your library.",
+        timer,
+      });
+    });
+  }, []);
+
+  const requestDelete = (id) => {
+    const index = posts.findIndex((p) => p.id === id);
+    if (index === -1) return;
+    const post = posts[index];
+    // A second delete while one is pending commits the first immediately.
+    const current = toastRef.current;
+    if (current) {
+      clearTimeout(current.timer);
+      setToast(null);
+      if (current.type === "undo") performDelete(current.post, current.index);
+    }
+    setPosts((prev) => prev.filter((p) => p.id !== id));
+    const timer = setTimeout(() => {
+      setToast(null);
+      performDelete(post, index);
+    }, 5000);
+    setToast({ type: "undo", post, index, timer });
+  };
+
+  const undoDelete = () => {
+    const current = toastRef.current;
+    if (current?.type !== "undo") return;
+    clearTimeout(current.timer);
+    setPosts((prev) => insertPostAt(prev, current.index, current.post));
+    setToast(null);
+  };
+
+  // If the library unmounts mid-window, drop the timer without deleting —
+  // the post is still on the server and reappears on the next load.
+  useEffect(
+    () => () => {
+      if (toastRef.current) clearTimeout(toastRef.current.timer);
+    },
+    []
+  );
 
   // Update collection in state when a post's collections change
   const onCollectionChange = (postId, newCollections) => {
@@ -289,7 +349,7 @@ export function Library({ accountButton }) {
                   key={p.id}
                   post={p}
                   onUpdated={onUpdated}
-                  onDeleted={onDeleted}
+                  onDeleted={requestDelete}
                   onTagClick={toggleTag}
                   activeTags={activeTags}
                   collections={collections}
@@ -307,7 +367,7 @@ export function Library({ accountButton }) {
                   key={p.id}
                   post={p}
                   onUpdated={onUpdated}
-                  onDeleted={onDeleted}
+                  onDeleted={requestDelete}
                   onTagClick={toggleTag}
                   activeTags={activeTags}
                   collections={collections}
@@ -318,6 +378,22 @@ export function Library({ accountButton }) {
           )}
         </div>
       </main>
+
+      {toast && (
+        <div
+          className={`toast${toast.type === "error" ? " toast--error" : ""}`}
+          role="status"
+        >
+          <span className="toast-msg">
+            {toast.type === "undo" ? "Post deleted" : toast.message}
+          </span>
+          {toast.type === "undo" && (
+            <button className="toast-btn" onClick={undoDelete}>
+              Undo
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

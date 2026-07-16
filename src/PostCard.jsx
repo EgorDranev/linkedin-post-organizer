@@ -466,7 +466,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const comments = social.comments;
   const reposts = social.reposts;
   const publishedText = post.metadata?.publishedText || "";
-  const hasStats = Boolean(reactions || comments || reposts || publishedText);
 
   useEffect(() => {
     if (!readerOpen) return undefined;
@@ -554,7 +553,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
         className="card-btn card-btn--danger"
         title="Delete saved post"
         aria-label="Delete saved post"
-        onClick={() => api.deletePost(post.id).then(() => onDeleted(post.id))}
+        onClick={() => onDeleted(post.id)}
       >
         <TrashIcon />
       </button>
@@ -604,8 +603,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               {headline && <span className="card-headline">{headline}</span>}
               {headline && <span className="meta-sep" aria-hidden="true">·</span>}
               <span className="card-source-name">{source}</span>
-              <span className="meta-sep" aria-hidden="true">·</span>
-              <span>Saved {savedDate}</span>
             </span>
           </div>
           {renderActions()}
@@ -643,7 +640,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           </div>
         )}
 
-        {hasStats && (
         <div className="card-stats">
           {reactions ? (
             <span className="card-stat" title={`${reactions} reactions`}>
@@ -666,11 +662,13 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           {publishedText ? (
             <span className="card-stat" title={`Published ${publishedText}`}>
               <ClockIcon width={14} height={14} />
-              {publishedText}
+              Published {publishedText}
             </span>
           ) : null}
+          <span className="card-stat card-stat--saved" title={`Saved ${savedDate}`}>
+            Saved {savedDate}
+          </span>
         </div>
-        )}
 
         {topicTags.length > 0 && (
           <div className="card-topics">
@@ -700,21 +698,33 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               >
                 {t}
               </button>
-              <button className="chip-x" onClick={() => removeTag(t)} title="Remove">
+              <button
+                className="chip-x"
+                onClick={() => removeTag(t)}
+                title="Remove"
+                aria-label={`Remove tag ${t}`}
+              >
                 ×
               </button>
             </span>
           ))}
 
+          {pending.length > 0 && <span className="tags-hint">Suggested</span>}
           {pending.map((s) => (
-            <span key={s.tag} className="chip suggested" title="Suggested">
-              <button className="chip-add" onClick={() => acceptTag(s.tag)}>
+            <span key={s.tag} className="chip suggested">
+              <button
+                className="chip-add"
+                onClick={() => acceptTag(s.tag)}
+                title="Add this tag"
+                aria-label={`Add suggested tag ${s.tag}`}
+              >
                 + {s.tag}
               </button>
               <button
                 className="chip-x"
                 onClick={() => dismissSuggestion(s.tag)}
                 title="Dismiss suggestion"
+                aria-label={`Dismiss suggested tag ${s.tag}`}
               >
                 ×
               </button>

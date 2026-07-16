@@ -669,8 +669,8 @@ textarea:focus {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--r-xs);
@@ -681,6 +681,20 @@ textarea:focus {
 }
 .card-btn:hover { background: var(--surface-2); color: var(--ink); }
 .card-btn--danger:hover { background: var(--danger-soft); color: var(--danger); }
+/* destructive action sits apart from the frequent-use buttons, behind a divider */
+.card-actions .card-btn--danger {
+  position: relative;
+  margin-left: var(--space-3);
+}
+.card-actions .card-btn--danger::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -8px;
+  width: 1px;
+  background: var(--line);
+}
 /* frosted variant when overlaid on a media image */
 .card-actions--overlay .card-btn {
   border-color: rgba(255, 255, 255, 0.5);
@@ -825,6 +839,8 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 }
 .card-stat { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
 .card-stat svg { flex: 0 0 auto; opacity: 0.85; }
+/* saved date lives at the row's far edge so it never crowds the identity line */
+.card-stat--saved { margin-left: auto; white-space: nowrap; }
 
 /* post-type pill — labels what kind of post this is */
 .type-badge {
@@ -934,9 +950,18 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   font-weight: 600;
   cursor: pointer;
   border-radius: var(--r-xs);
-  transition: color 0.12s ease;
+  /* dashed underline signals these are tappable, not plain text */
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  transition: color 0.12s ease, text-decoration-color 0.12s ease;
 }
-.topic-chip:hover { color: var(--accent); text-decoration: underline; }
+.topic-chip:hover {
+  color: var(--accent);
+  text-decoration-style: solid;
+  text-decoration-color: currentColor;
+}
 
 /* =====================================================================
    Tags / chips
@@ -989,6 +1014,14 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   border: 1px dashed var(--suggest-border);
   padding: 2px 4px 2px 2px;
 }
+/* label that introduces the pending-suggestion chips */
+.tags-hint {
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 .chip-add {
   background: none;
   border: none;
@@ -996,7 +1029,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 4px 8px;
 }
 .chip-add:hover { text-decoration: underline; }
 .chip-x {
@@ -1006,10 +1039,10 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   border: none;
   color: inherit;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: var(--r-full);
   opacity: 0.55;
 }
@@ -1028,6 +1061,41 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 }
 .chip-form input::placeholder { color: var(--muted-2); }
 .chip-form input:focus { width: 132px; }
+
+/* =====================================================================
+   Toast — undo window for deletes, transient errors
+   ===================================================================== */
+
+.toast {
+  position: fixed;
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 10px 16px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: #fff;
+  font-size: var(--fs-sm);
+  box-shadow: var(--shadow-lg);
+  z-index: 60;
+}
+.toast--error { background: var(--danger); }
+.toast-btn {
+  border: none;
+  background: none;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--r-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.toast-btn:hover { background: rgba(255, 255, 255, 0.14); }
 
 /* collection dropdown trigger (lives in the tag row) */
 .collection-dropdown-container { position: relative; display: inline-flex; }
