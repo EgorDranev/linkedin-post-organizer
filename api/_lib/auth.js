@@ -14,8 +14,9 @@ export function hashSecret(value) {
 }
 
 function bearer(req) {
+  // RFC 7235: the auth scheme is case-insensitive.
   const raw = req.headers?.authorization || req.headers?.Authorization || "";
-  return raw.startsWith("Bearer ") ? raw.slice(7).trim() : "";
+  return raw.slice(0, 7).toLowerCase() === "bearer " ? raw.slice(7).trim() : "";
 }
 
 export async function authenticateRequest(req) {
@@ -28,10 +29,13 @@ export async function authenticateRequest(req) {
     return { userId: record.userId, kind: "extension", tokenId: record.id };
   }
 
+  // Fail closed: without APP_ORIGIN the azp check would be silently skipped.
+  if (!process.env.APP_ORIGIN) throw new Error("APP_ORIGIN is not configured");
+
   try {
     const payload = await verifyToken(token, {
       secretKey: process.env.CLERK_SECRET_KEY,
-      authorizedParties: [process.env.APP_ORIGIN].filter(Boolean),
+      authorizedParties: [process.env.APP_ORIGIN],
     });
     if (!payload.sub) throw new Error("missing subject");
     return { userId: payload.sub, kind: "web" };
@@ -46,7 +50,13 @@ export async function requireUser(req, res, { webOnly = false } = {}) {
     if (webOnly && actor.kind !== "web") throw new HttpAuthError("web session required", 403);
     return actor;
   } catch (error) {
-    res.status(error.statusCode || 401).json({ error: error.message || "unauthorized" });
+    // Only deliberate auth failures surface their message; anything else
+    // (e.g. a DB outage in the token lookup) must not leak internals or
+    // masquerade as a revoked credential.
+    const isAuthError = error instanceof HttpAuthError;
+    res
+      .status(isAuthError ? error.statusCode : 500)
+      .json({ error: isAuthError ? error.message : "internal error" });
     return null;
   }
 }
