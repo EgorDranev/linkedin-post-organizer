@@ -92,7 +92,7 @@
 - Create: `test/helpers/http.js`
 - Create: `test/tagger-smoke.test.js`
 
-- [ ] **Step 1: Install the test dependencies**
+- [x] **Step 1: Install the test dependencies**
 
 Run:
 
@@ -102,7 +102,7 @@ npm install --save-dev vitest @testing-library/react @testing-library/jest-dom j
 
 Expected: `package.json` and `package-lock.json` include the four development dependencies.
 
-- [ ] **Step 2: Add test scripts**
+- [x] **Step 2: Add test scripts**
 
 Add these scripts to `package.json`:
 
@@ -111,7 +111,7 @@ Add these scripts to `package.json`:
 "test:watch": "vitest"
 ```
 
-- [ ] **Step 3: Create the Vitest configuration and setup**
+- [x] **Step 3: Create the Vitest configuration and setup**
 
 Create `vitest.config.js`:
 
@@ -167,7 +167,7 @@ export function response() {
 }
 ```
 
-- [ ] **Step 4: Add and run a baseline smoke test**
+- [x] **Step 4: Add and run a baseline smoke test**
 
 Create `test/tagger-smoke.test.js`:
 
@@ -187,7 +187,7 @@ Run: `npm test`
 
 Expected: one passing test and no unhandled errors.
 
-- [ ] **Step 5: Commit the test foundation**
+- [x] **Step 5: Commit the test foundation**
 
 ```bash
 git add package.json package-lock.json vitest.config.js test
@@ -207,7 +207,7 @@ git commit -m "test: add beta test harness"
 - Create: `test/app-auth.test.jsx`
 - Delete: `src/Login.jsx`
 
-- [ ] **Step 1: Install Clerk's React and backend SDKs**
+- [x] **Step 1: Install Clerk's React and backend SDKs**
 
 Run:
 
@@ -217,7 +217,7 @@ npm install @clerk/react @clerk/backend
 
 Expected: both packages appear under `dependencies`.
 
-- [ ] **Step 2: Document the required environment**
+- [x] **Step 2: Document the required environment**
 
 Append to `.env.example`:
 
@@ -234,7 +234,7 @@ FOUNDER_USER_ID=user_founder
 
 The README task later explains that real keys come from the Clerk dashboard and must stay in `.env.local`/Vercel, never in Git.
 
-- [ ] **Step 3: Write the signed-out frontend test first**
+- [x] **Step 3: Write the signed-out frontend test first**
 
 Create `test/app-auth.test.jsx`:
 
@@ -264,7 +264,7 @@ Run: `npm test -- test/app-auth.test.jsx`
 
 Expected: FAIL because the current app still renders the shared-password login.
 
-- [ ] **Step 4: Mount Clerk and replace the password gate**
+- [x] **Step 4: Mount Clerk and replace the password gate**
 
 Replace `src/main.jsx` with:
 
@@ -333,7 +333,7 @@ export default function App() {
 
 Remove the old `authed`, `/api/session`, login, logout, and `Login` component paths from `App.jsx`. Place `accountButton` where the Lock button currently renders.
 
-- [ ] **Step 5: Attach Clerk tokens to all web API calls**
+- [x] **Step 5: Attach Clerk tokens to all web API calls**
 
 At the top of `src/api.js`, replace the singleton fetch assumptions with:
 
@@ -366,7 +366,7 @@ savePost: (body) => request("/api/posts", {
 
 Remove `session`, `login`, and `logout` from the API object.
 
-- [ ] **Step 6: Run tests and build**
+- [x] **Step 6: Run tests and build**
 
 Run:
 
@@ -377,7 +377,7 @@ npm run build
 
 Expected: the auth test passes and Vite completes without missing imports.
 
-- [ ] **Step 7: Delete the shared-password frontend and commit**
+- [x] **Step 7: Delete the shared-password frontend and commit**
 
 ```bash
 git rm src/Login.jsx
