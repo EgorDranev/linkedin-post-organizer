@@ -85,7 +85,8 @@ export function ensureSchema() {
     await sql`
       CREATE TABLE IF NOT EXISTS posts (
         id              BIGSERIAL PRIMARY KEY,
-        url             TEXT UNIQUE,
+        user_id         TEXT NOT NULL,
+        url             TEXT,
         author          TEXT,
         author_headline TEXT,
         text            TEXT NOT NULL,
@@ -99,11 +100,13 @@ export function ensureSchema() {
     await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS media JSONB NOT NULL DEFAULT '[]'::jsonb`;
     await sql`
       CREATE TABLE IF NOT EXISTS tags (
-        id   BIGSERIAL PRIMARY KEY,
-        name TEXT UNIQUE NOT NULL
+        id      BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name    TEXT NOT NULL
       )`;
     await sql`
       CREATE TABLE IF NOT EXISTS post_tags (
+        user_id TEXT NOT NULL,
         post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
         tag_id  BIGINT NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
         PRIMARY KEY (post_id, tag_id)
@@ -111,155 +114,105 @@ export function ensureSchema() {
     await sql`
       CREATE TABLE IF NOT EXISTS collections (
         id            BIGSERIAL PRIMARY KEY,
-        name          TEXT UNIQUE NOT NULL,
+        user_id       TEXT NOT NULL,
+        name          TEXT NOT NULL,
         description   TEXT,
         created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
       )`;
     await sql`
       CREATE TABLE IF NOT EXISTS post_collections (
+        user_id       TEXT NOT NULL,
         post_id       BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
         collection_id BIGINT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
         PRIMARY KEY (post_id, collection_id)
+      )`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS posts_user_url_unique ON posts (user_id, url) WHERE url IS NOT NULL`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS tags_user_name_unique ON tags (user_id, name)`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS collections_user_name_unique ON collections (user_id, name)`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS extension_pairings (
+        id UUID PRIMARY KEY,
+        verifier_hash TEXT NOT NULL,
+        user_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        approved_at TIMESTAMPTZ,
+        consumed_at TIMESTAMPTZ
+      )`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS extension_tokens (
+        id UUID PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT UNIQUE NOT NULL,
+        label TEXT NOT NULL DEFAULT 'Chrome extension',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_used_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ
       )`;
   })();
   return schemaReady;
 }
 
-// --- queries ---------------------------------------------------------------
+// --- owner-aware repository -------------------------------------------------
 
-export async function allTags() {
-  return await sql`
-    SELECT t.name AS name, COUNT(pt.post_id)::int AS count
-    FROM tags t LEFT JOIN post_tags pt ON pt.tag_id = t.id
-    GROUP BY t.id ORDER BY count DESC, t.name ASC`;
-}
-
-export async function upsertTag(name) {
-  const clean = name.trim().toLowerCase();
-  const rows = await sql`
-    INSERT INTO tags (name) VALUES (${clean})
-    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-    RETURNING id`;
-  return rows[0].id;
-}
-
-export async function tagsForPost(postId) {
-  const rows = await sql`
-    SELECT t.name FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
-    WHERE pt.post_id = ${postId} ORDER BY t.name`;
-  return rows.map((r) => r.name);
-}
-
-export async function setPostTags(postId, names) {
-  await sql`DELETE FROM post_tags WHERE post_id = ${postId}`;
-  for (const name of names) {
-    if (!name || !name.trim()) continue;
-    const tagId = await upsertTag(name);
-    await sql`
-      INSERT INTO post_tags (post_id, tag_id) VALUES (${postId}, ${tagId})
-      ON CONFLICT DO NOTHING`;
+export function createRepository(db) {
+  async function tagsForPost(userId, postId) {
+    const rows = await db`
+      SELECT t.name FROM post_tags pt
+      JOIN tags t ON t.id = pt.tag_id AND t.user_id = ${userId}
+      WHERE pt.user_id = ${userId} AND pt.post_id = ${postId}
+      ORDER BY t.name`;
+    return rows.map((row) => row.name);
   }
+
+  async function getPost(userId, id) {
+    const rows = await db`SELECT * FROM posts WHERE user_id = ${userId} AND id = ${id}`;
+    return rows.length ? hydrate(userId, rows[0]) : null;
+  }
+
+  async function allTags(userId) {
+    return db`
+      SELECT t.name, COUNT(pt.post_id)::int AS count
+      FROM tags t
+      LEFT JOIN post_tags pt ON pt.tag_id = t.id AND pt.user_id = ${userId}
+      WHERE t.user_id = ${userId}
+      GROUP BY t.id ORDER BY count DESC, t.name ASC`;
+  }
+
+  async function upsertTag(userId, name) {
+    const clean = name.trim().toLowerCase();
+    const rows = await db`
+      INSERT INTO tags (user_id, name) VALUES (${userId}, ${clean})
+      ON CONFLICT (user_id, name) DO UPDATE SET name = EXCLUDED.name
+      RETURNING id`;
+    return rows[0].id;
+  }
+
+  async function setPostTags(userId, postId, names) {
+    await db`DELETE FROM post_tags WHERE user_id = ${userId} AND post_id = ${postId}`;
+    for (const name of names) {
+      if (!name?.trim()) continue;
+      const tagId = await upsertTag(userId, name);
+      await db`
+        INSERT INTO post_tags (user_id, post_id, tag_id)
+        VALUES (${userId}, ${postId}, ${tagId}) ON CONFLICT DO NOTHING`;
+    }
+  }
+
+  async function hydrate(userId, row) {
+    return {
+      id: Number(row.id), url: row.url, author: row.author,
+      authorHeadline: row.author_headline, text: row.text,
+      savedAt: row.saved_at, status: row.status,
+      metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+      media: Array.isArray(row.media) ? row.media : [],
+      tags: await tagsForPost(userId, row.id),
+      suggested: Array.isArray(row.suggested) ? row.suggested : [],
+    };
+  }
+
+  return { allTags, getPost, hydrate, setPostTags, tagsForPost, upsertTag };
 }
 
-export async function hydrate(row) {
-  return {
-    id: Number(row.id),
-    url: row.url,
-    author: row.author,
-    authorHeadline: row.author_headline,
-    text: row.text,
-    savedAt: row.saved_at,
-    status: row.status,
-    metadata:
-      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
-        ? row.metadata
-        : {},
-    media: Array.isArray(row.media) ? row.media : [],
-    tags: await tagsForPost(row.id),
-    collections: await getCollectionsForPost(row.id),
-    // jsonb is returned already parsed by the driver
-    suggested: Array.isArray(row.suggested) ? row.suggested : [],
-  };
-}
-
-export async function getPost(id) {
-  const rows = await sql`SELECT * FROM posts WHERE id = ${id}`;
-  return rows.length ? hydrate(rows[0]) : null;
-}
-
-// --- collection functions --------------------------------------------------
-
-export async function getAllCollections() {
-  return await sql`SELECT id, name, description, created_at FROM collections ORDER BY name`;
-}
-
-export async function getCollectionById(id) {
-  const rows = await sql`SELECT id, name, description, created_at FROM collections WHERE id = ${id}`;
-  return rows.length ? rows[0] : null;
-}
-
-export async function getCollectionByName(name) {
-  const rows = await sql`SELECT id, name, description, created_at FROM collections WHERE name = ${name}`;
-  return rows.length ? rows[0] : null;
-}
-
-export async function createCollection(name, description = null) {
-  const existing = await getCollectionByName(name);
-  if (existing) return existing;
-
-  const rows = await sql`
-    INSERT INTO collections (name, description)
-    VALUES (${name}, ${description})
-    RETURNING id, name, description, created_at`;
-  return rows[0];
-}
-
-export async function updateCollection(id, name, description = null) {
-  const rows = await sql`
-    UPDATE collections
-    SET name = ${name}, description = ${description}
-    WHERE id = ${id}
-    RETURNING id, name, description, created_at`;
-  return rows[0];
-}
-
-export async function deleteCollection(id) {
-  await sql`DELETE FROM post_collections WHERE collection_id = ${id}`;
-  await sql`DELETE FROM collections WHERE id = ${id}`;
-}
-
-export async function getPostsInCollection(collectionId) {
-  const rows = await sql`
-    SELECT p.* FROM posts p
-    JOIN post_collections pc ON p.id = pc.post_id
-    WHERE pc.collection_id = ${collectionId}
-    ORDER BY p.saved_at DESC, p.id DESC`;
-  return Promise.all(rows.map(hydrate));
-}
-
-export async function addPostToCollection(postId, collectionId) {
-  await sql`
-    INSERT INTO post_collections (post_id, collection_id)
-    VALUES (${postId}, ${collectionId})
-    ON CONFLICT DO NOTHING`;
-}
-
-export async function removePostFromCollection(postId, collectionId) {
-  await sql`
-    DELETE FROM post_collections
-    WHERE post_id = ${postId} AND collection_id = ${collectionId}`;
-}
-
-export async function getCollectionsForPost(postId) {
-  const rows = await sql`
-    SELECT c.id, c.name, c.description, c.created_at
-    FROM collections c
-    JOIN post_collections pc ON c.id = pc.collection_id
-    WHERE pc.post_id = ${postId}
-    ORDER BY c.name`;
-  return rows;
-}
-
-export async function removePostFromAllCollections(postId) {
-  await sql`DELETE FROM post_collections WHERE post_id = ${postId}`;
-}
+const repository = createRepository(sql);
+export const { allTags, getPost, hydrate, setPostTags, tagsForPost, upsertTag } = repository;
