@@ -30,7 +30,13 @@ async function pollPairing() {
     body: JSON.stringify({ verifier: pairingVerifier }),
   });
   if (response.status === 202) return { state: "waiting" };
-  if (!response.ok) throw new Error("Connection request expired");
+  if (!response.ok) {
+    // Terminal failure (expired/consumed/not found): the pairing is dead,
+    // so stop holding its one-time verifier and let the next poll bail out
+    // via the disconnected branch above instead of re-failing forever.
+    await chrome.storage.local.remove(["pairingId", "pairingVerifier"]);
+    throw new Error("Connection request expired");
+  }
   const { token } = await response.json();
   await chrome.storage.local.set({ extensionToken: token });
   await chrome.storage.local.remove(["pairingId", "pairingVerifier", "needsReconnect"]);

@@ -106,6 +106,30 @@ describe("posts API ownership", () => {
     expect(sqlCallText(urnLookup)).toContain("user_id =");
     expect(sqlCallValues(urnLookup)).toEqual(["user_a", "urn:li:activity:999"]);
   });
+
+  it("answers duplicate when a concurrent url-less capture wins the urn insert race", async () => {
+    // The pre-check SELECT misses for both concurrent requests (neither row
+    // committed yet); the loser's INSERT must be caught by the urn arbiter,
+    // not just the url one, or it throws an unhandled constraint violation.
+    sql.mockImplementation(async (strings) => {
+      const text = strings.join(" ");
+      if (text.includes("INSERT INTO posts")) {
+        expect(text).toContain("ON CONFLICT (user_id, urn)");
+        return []; // ON CONFLICT ... DO NOTHING: this request lost the race.
+      }
+      if (text.includes("SELECT id FROM posts") && text.includes("urn =")) return [{ id: 9 }];
+      return [];
+    });
+    getPost.mockResolvedValue({ id: 9, text: "raced" });
+
+    const res = response();
+    await postsHandler(
+      request({ method: "POST", body: { text: "raced", urn: "urn:li:activity:999", url: null } }),
+      res
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body.duplicate).toBe(true);
+  });
 });
 
 describe("post detail API ownership", () => {
