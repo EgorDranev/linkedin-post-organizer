@@ -11,9 +11,18 @@ export function setUnauthorizedHandler(handler) {
   unauthorizedHandler = handler;
 }
 
-const json = (r) => {
+const json = async (r) => {
   if (r.status === 401) throw new AuthError("unauthorized");
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  if (!r.ok) {
+    const err = new Error(`${r.status} ${r.statusText}`);
+    try {
+      const body = await r.json();
+      if (body && typeof body.error === "string") err.serverMessage = body.error;
+    } catch {
+      // Non-JSON error body; the generic message stands.
+    }
+    throw err;
+  }
   return r.status === 204 ? null : r.json();
 };
 
@@ -77,4 +86,9 @@ export const api = {
       body: JSON.stringify({ postId, collectionId }),
     }),
   getPostsInCollection: (collectionId) => request(`/api/collections/${collectionId}/posts`),
+
+  // account
+  deleteAccount: () => request("/api/account", { method: "DELETE" }),
+  listExtensionTokens: () => request("/api/extension/tokens"),
+  revokeExtensionToken: (id) => request(`/api/extension/tokens/${id}`, { method: "DELETE" }),
 };

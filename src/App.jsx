@@ -7,6 +7,7 @@ import { AuthScreen } from "./AuthScreen.jsx";
 import { BrowseControls } from "./BrowseControls.jsx";
 import { exportPostsCsv } from "./exportCsv.js";
 import { CollectionSidebar } from "./CollectionSidebar.jsx";
+import { Settings } from "./Settings.jsx";
 
 const ICON = {
   viewBox: "0 0 24 24",
@@ -42,6 +43,12 @@ const SearchOffIcon = () => (
     <path d="m21 21-4.3-4.3" />
   </svg>
 );
+const GearIcon = () => (
+  <svg width="15" height="15" {...ICON}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
 
 export function Library({ accountButton }) {
   const [posts, setPosts] = useState([]);
@@ -49,6 +56,7 @@ export function Library({ accountButton }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // browse state
   const [query, setQuery] = useState("");
@@ -247,6 +255,16 @@ export function Library({ accountButton }) {
   const filed = filtered.filter((p) => p.status === "filed");
   const exportLabel = filtering ? "Export filtered CSV" : "Export CSV";
 
+  // Settings replaces the library view; Library stays mounted so a pending
+  // delete-undo window still commits (or can be undone on return).
+  if (settingsOpen) {
+    return (
+      <div className="app">
+        <Settings onClose={() => setSettingsOpen(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -271,6 +289,10 @@ export function Library({ accountButton }) {
                 {exportLabel}
               </button>
             )}
+            <button className="topbar-btn" onClick={() => setSettingsOpen(true)}>
+              <GearIcon />
+              Settings
+            </button>
             {accountButton}
           </div>
         </div>
