@@ -124,6 +124,10 @@ export default async function handler(req, res) {
     const metadata = cleanJsonObject(req.body?.metadata);
     const media = cleanMedia(req.body?.media);
     const postUrl = cleanPostUrl(url, metadata);
+    const urn =
+      typeof req.body?.urn === "string" && req.body.urn.trim()
+        ? req.body.urn.trim().slice(0, 256)
+        : null;
     const hasMetadata = Object.keys(metadata).length > 0;
     const hasMedia = media.length > 0;
     if (!text || !text.trim()) {
@@ -135,9 +139,13 @@ export default async function handler(req, res) {
       await suggestTagsAI(text, { existingTags: tags, author })
     );
 
+    // URL-less captures (some LinkedIn posts have no extractable permalink)
+    // dedupe by the post's urn instead, so a repeated Save never duplicates.
     const existing = postUrl
       ? await sql`SELECT id FROM posts WHERE user_id = ${userId} AND url = ${postUrl}`
-      : [];
+      : urn
+        ? await sql`SELECT id FROM posts WHERE user_id = ${userId} AND urn = ${urn}`
+        : [];
 
     let id;
     let duplicate = existing.length > 0;
@@ -161,22 +169,47 @@ export default async function handler(req, res) {
           END
         WHERE user_id = ${userId} AND id = ${id}`;
     } else {
-      // A concurrent capture of the same URL can still slip past the SELECT
-      // above; the per-user unique index turns the loser into a duplicate
-      // response instead of an unhandled constraint violation.
-      const rows = await sql`
-        INSERT INTO posts (
-          user_id, url, author, author_headline, text, status, suggested, metadata, media
-        )
-        VALUES (${userId}, ${postUrl}, ${author ?? null}, ${authorHeadline ?? null},
-                ${text}, 'review', ${suggestions}::jsonb,
-                ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
-        ON CONFLICT (user_id, url) WHERE url IS NOT NULL DO NOTHING
-        RETURNING id`;
+      // A concurrent capture of the same url (or, for url-less posts, the
+      // same urn) can still slip past the SELECT above. Match the ON
+      // CONFLICT arbiter to whichever partial unique index the row actually
+      // falls under, so the loser gets a duplicate response instead of an
+      // unhandled constraint violation. (The neon() client executes each
+      // tagged template as its own query — fragments can't be composed —
+      // so the two cases are written out in full.)
+      const rows = postUrl
+        ? await sql`
+            INSERT INTO posts (
+              user_id, url, urn, author, author_headline, text, status, suggested, metadata, media
+            )
+            VALUES (${userId}, ${postUrl}, ${urn}, ${author ?? null}, ${authorHeadline ?? null},
+                    ${text}, 'review', ${suggestions}::jsonb,
+                    ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
+            ON CONFLICT (user_id, url) WHERE url IS NOT NULL DO NOTHING
+            RETURNING id`
+        : urn
+          ? await sql`
+              INSERT INTO posts (
+                user_id, url, urn, author, author_headline, text, status, suggested, metadata, media
+              )
+              VALUES (${userId}, ${postUrl}, ${urn}, ${author ?? null}, ${authorHeadline ?? null},
+                      ${text}, 'review', ${suggestions}::jsonb,
+                      ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
+              ON CONFLICT (user_id, urn) WHERE urn IS NOT NULL AND url IS NULL DO NOTHING
+              RETURNING id`
+          : await sql`
+              INSERT INTO posts (
+                user_id, url, urn, author, author_headline, text, status, suggested, metadata, media
+              )
+              VALUES (${userId}, ${postUrl}, ${urn}, ${author ?? null}, ${authorHeadline ?? null},
+                      ${text}, 'review', ${suggestions}::jsonb,
+                      ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
+              RETURNING id`;
       if (rows.length) {
         id = rows[0].id;
       } else {
-        const winner = await sql`SELECT id FROM posts WHERE user_id = ${userId} AND url = ${postUrl}`;
+        const winner = postUrl
+          ? await sql`SELECT id FROM posts WHERE user_id = ${userId} AND url = ${postUrl}`
+          : await sql`SELECT id FROM posts WHERE user_id = ${userId} AND urn = ${urn}`;
         id = winner[0].id;
         duplicate = true;
       }

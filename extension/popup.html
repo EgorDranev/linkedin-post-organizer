@@ -47,46 +47,29 @@
       }
       .brand h1 { font-size: 15px; font-weight: 600; margin: 0; }
 
-      /* Step progress */
-      .stepper { display: flex; gap: 5px; margin: 0 0 16px; }
-      .dot {
-        height: 4px;
-        flex: 1;
-        border-radius: 3px;
-        background: var(--line);
-        transition: background 0.15s ease;
-      }
-      .dot.done,
-      .dot.current { background: var(--brand); }
+      h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+      .lead { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
 
-      .step-title { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
-      .lead { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+      /* Connection states: popup.js reveals exactly one */
+      section[hidden] { display: none; }
 
-      /* Steps: only the active one is shown */
-      .step { display: none; }
-      .step.active { display: block; }
-
-      .status { font-size: 13px; margin: 8px 0; }
-      .status.ok { color: var(--ok); }
-      .status.bad { color: var(--bad); }
-      .err { color: var(--bad); font-size: 12px; margin-top: 6px; min-height: 14px; }
-
-      label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
-      input[type="text"],
-      input[type="password"] {
-        width: 100%;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 9px 10px;
-        font: inherit;
-        font-size: 13px;
+      /* Consent row */
+      .consent {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        font-size: 12.5px;
         color: var(--ink);
+        margin: 12px 0 14px;
+        cursor: pointer;
       }
-      input[type="text"]:focus,
-      input[type="password"]:focus {
-        outline: none;
-        border-color: var(--brand);
-        box-shadow: 0 0 0 3px rgba(10, 102, 194, 0.12);
+      .consent input {
+        flex: 0 0 auto;
+        width: 15px;
+        height: 15px;
+        margin: 1px 0 0;
+        accent-color: var(--brand);
+        cursor: pointer;
       }
 
       /* Button system */
@@ -109,12 +92,6 @@
       }
       .btn-primary { background: var(--brand); color: #fff; }
       .btn-primary:hover { background: var(--brand-hover); }
-      .btn-secondary {
-        background: #fff;
-        color: var(--brand);
-        border-color: var(--line);
-      }
-      .btn-secondary:hover { background: var(--bg-soft); border-color: #c4cdd5; }
       .btn-ghost {
         background: #fff;
         color: var(--muted);
@@ -122,17 +99,6 @@
       }
       .btn-ghost:hover { background: var(--bg-soft); }
       .btn:disabled { opacity: 0.55; cursor: default; }
-
-      .btn-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 12.5px;
-        font-weight: 600;
-        color: var(--brand);
-        text-decoration: none;
-      }
-      .btn-link:hover { text-decoration: underline; }
 
       /* Connection badge */
       .badge {
@@ -163,7 +129,7 @@
         padding: 11px 12px;
         border: 1px solid var(--line);
         border-radius: 10px;
-        margin: 14px 0;
+        margin: 0 0 14px;
       }
       .setting-text { flex: 1; min-width: 0; }
       .setting-label { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -206,39 +172,11 @@
         outline-offset: 2px;
       }
 
-      /* Done-screen action stack */
       .actions { display: flex; flex-direction: column; gap: 10px; }
-      .backfill {
-        border-top: 1px solid #eef1f3;
-        padding-top: 12px;
-        margin-top: 2px;
-      }
-      .caption { font-size: 11.5px; color: var(--muted); margin: 7px 0 0; line-height: 1.4; }
-      .import-status { font-size: 12px; margin-top: 8px; }
-      .import-status.ok { color: var(--ok); }
-      .import-status.bad { color: var(--bad); }
-      .linkedin-link { margin-top: 12px; }
 
-      .foot {
-        margin-top: 16px;
-        padding-top: 12px;
-        border-top: 1px solid #eef1f3;
-      }
-      .muted {
-        font-size: 12px;
-        font-weight: 500;
-        color: var(--muted);
-        text-decoration: none;
-      }
-      .muted:hover { color: var(--ink); text-decoration: underline; }
-
-      p.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; line-height: 1.45; }
-
-      /* Wizard navigation footer */
-      .nav { display: flex; gap: 8px; margin-top: 18px; }
-      #back { flex: 0 0 auto; width: auto; }
-      #next,
-      #retry { flex: 1; }
+      p.hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; line-height: 1.45; }
+      .status-note { font-size: 12px; color: var(--muted); margin: 8px 0 0; min-height: 14px; }
+      .status-note.bad { color: var(--bad); }
     </style>
   </head>
   <body>
@@ -247,37 +185,20 @@
       <h1>LinkedIn Saver</h1>
     </div>
 
-    <div class="stepper" id="stepper"></div>
-
-    <!-- Step 1: server URL -->
-    <section class="step" data-step="0">
-      <p class="step-title">Connect your app</p>
-      <label for="server">App server URL</label>
-      <input id="server" type="text" placeholder="https://your-app.vercel.app" />
-      <p class="hint">The address where your LinkedIn Saver app is deployed.</p>
-      <div class="err" id="urlErr"></div>
+    <!-- State 1: not connected yet — consent, then connect -->
+    <section id="disconnected" hidden>
+      <h2>Connect your private library</h2>
+      <p class="lead">When you choose Save on LinkedIn, this extension sends that post's visible content and source details to your LinkedIn Saver account.</p>
+      <label class="consent"><input id="consent" type="checkbox" /> I understand what is captured.</label>
+      <button id="connect" class="btn btn-primary" disabled>Connect LinkedIn Saver</button>
+      <p class="hint">You'll approve the connection in your signed-in LinkedIn Saver tab.</p>
+      <div class="status-note" id="connectStatus"></div>
     </section>
 
-    <!-- Step 2: password -->
-    <section class="step" data-step="1">
-      <p class="step-title">Password</p>
-      <label for="password">App password</label>
-      <input id="password" type="password" placeholder="App password" />
-      <p class="hint">Leave blank if your app has no password set.</p>
-    </section>
-
-    <!-- Step 3: verify -->
-    <section class="step" data-step="2">
-      <p class="step-title">Verify connection</p>
-      <div class="status" id="status">Checking connection…</div>
-      <p class="hint" id="verifyHint"></p>
-    </section>
-
-    <!-- Step 4: done / first action -->
-    <section class="step" data-step="3">
-      <span class="badge ok" id="doneStatus">Connected &amp; authorized</span>
-      <p class="step-title">You're all set</p>
-      <p class="lead">Save any post on LinkedIn and it lands in your app — automatically.</p>
+    <!-- State 2: connected and capturing -->
+    <section id="connected" hidden>
+      <span class="badge ok">Connected</span>
+      <p class="lead">Save any post on LinkedIn and it lands in your library — automatically.</p>
 
       <div class="setting">
         <span class="setting-text">
@@ -291,34 +212,22 @@
       </div>
 
       <div class="actions">
-        <a id="open" class="btn btn-primary" href="#" target="_blank">Open my saved posts →</a>
-
-        <div class="backfill">
-          <button id="importSaved" class="btn btn-secondary">Import older saves</button>
-          <p class="caption">One-time backfill of posts you saved before installing.</p>
-          <div class="import-status" id="importStatus"></div>
-        </div>
-      </div>
-
-      <a
-        id="openLinkedInSaved"
-        class="btn-link linkedin-link"
-        href="https://www.linkedin.com/my-items/saved-posts/"
-        target="_blank"
-      >View your saved list on LinkedIn ↗</a>
-
-      <div class="foot">
-        <a id="reconfigure" class="muted" href="#">Change server or password</a>
+        <a id="open" class="btn btn-primary" href="#" target="_blank">Open my library →</a>
+        <button id="disconnect" class="btn btn-ghost">Disconnect this browser</button>
       </div>
     </section>
 
-    <!-- Shared navigation footer -->
-    <div class="nav" id="nav">
-      <button id="back" class="btn btn-ghost">← Back</button>
-      <button id="next" class="btn btn-primary">Next →</button>
-      <button id="retry" class="btn btn-primary">Retry</button>
-    </div>
+    <!-- State 3: was connected, credential no longer works -->
+    <section id="reconnect" hidden>
+      <span class="badge bad">Disconnected</span>
+      <h2>Reconnect to keep saving</h2>
+      <p class="lead">This browser's connection expired or was revoked, so new saves aren't reaching your library.</p>
+      <button id="reconnectBtn" class="btn btn-primary">Reconnect LinkedIn Saver</button>
+      <div class="status-note" id="reconnectStatus"></div>
+    </section>
 
+    <script src="config.js"></script>
+    <script src="lib/pairing-core.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

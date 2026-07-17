@@ -75,6 +75,61 @@ describe("posts API ownership", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.duplicate).toBe(true);
   });
+
+  it("dedupes a repeated capture that has no url by urn", async () => {
+    const insertCalls = () =>
+      sql.mock.calls.filter((c) => sqlCallText(c).includes("INSERT INTO posts"));
+    sql.mockImplementation(async (strings) => {
+      const text = strings.join(" ");
+      if (text.includes("INSERT INTO posts")) return [{ id: 9 }];
+      if (text.includes("SELECT id FROM posts") && text.includes("urn =")) {
+        // The second capture finds the row the first one inserted.
+        return insertCalls().length ? [{ id: 9 }] : [];
+      }
+      return [];
+    });
+    getPost.mockResolvedValue({ id: 9, text: "Post with no permalink" });
+
+    const body = { text: "Post with no permalink", urn: "urn:li:activity:999", url: null };
+    const first = response();
+    await postsHandler(request({ method: "POST", body }), first);
+    expect(first.statusCode).toBe(201);
+    expect(first.body.duplicate).toBe(false);
+
+    const second = response();
+    await postsHandler(request({ method: "POST", body }), second);
+    expect(second.statusCode).toBe(200);
+    expect(second.body.duplicate).toBe(true);
+    expect(insertCalls()).toHaveLength(1);
+
+    const urnLookup = sql.mock.calls.find((c) => sqlCallText(c).includes("urn ="));
+    expect(sqlCallText(urnLookup)).toContain("user_id =");
+    expect(sqlCallValues(urnLookup)).toEqual(["user_a", "urn:li:activity:999"]);
+  });
+
+  it("answers duplicate when a concurrent url-less capture wins the urn insert race", async () => {
+    // The pre-check SELECT misses for both concurrent requests (neither row
+    // committed yet); the loser's INSERT must be caught by the urn arbiter,
+    // not just the url one, or it throws an unhandled constraint violation.
+    sql.mockImplementation(async (strings) => {
+      const text = strings.join(" ");
+      if (text.includes("INSERT INTO posts")) {
+        expect(text).toContain("ON CONFLICT (user_id, urn)");
+        return []; // ON CONFLICT ... DO NOTHING: this request lost the race.
+      }
+      if (text.includes("SELECT id FROM posts") && text.includes("urn =")) return [{ id: 9 }];
+      return [];
+    });
+    getPost.mockResolvedValue({ id: 9, text: "raced" });
+
+    const res = response();
+    await postsHandler(
+      request({ method: "POST", body: { text: "raced", urn: "urn:li:activity:999", url: null } }),
+      res
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body.duplicate).toBe(true);
+  });
 });
 
 describe("post detail API ownership", () => {
