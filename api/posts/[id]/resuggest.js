@@ -3,7 +3,7 @@ import { suggestTagsAI } from "../../_lib/ai.js";
 import { requireUser } from "../../_lib/auth.js";
 
 export default async function handler(req, res) {
-  const actor = await requireUser(req, res);
+  const actor = await requireUser(req, res, { webOnly: true });
   if (!actor) return;
   const { userId } = actor;
 

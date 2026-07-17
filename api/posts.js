@@ -96,7 +96,9 @@ function cleanPostUrl(value, metadata) {
 }
 
 export default async function handler(req, res) {
-  const actor = await requireUser(req, res);
+  // The extension credential is capture-only per the spec: it may POST a
+  // capture and nothing else. Reads and edits require the web session.
+  const actor = await requireUser(req, res, { webOnly: req.method !== "POST" });
   if (!actor) return;
   const { userId } = actor;
 

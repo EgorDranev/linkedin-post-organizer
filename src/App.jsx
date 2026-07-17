@@ -8,6 +8,7 @@ import { BrowseControls } from "./BrowseControls.jsx";
 import { exportPostsCsv } from "./exportCsv.js";
 import { CollectionSidebar } from "./CollectionSidebar.jsx";
 import { Settings } from "./Settings.jsx";
+import { ExtensionConnect } from "./ExtensionConnect.jsx";
 
 const ICON = {
   viewBox: "0 0 24 24",
@@ -434,13 +435,20 @@ export default function App() {
 
   if (!isLoaded) return <div className="app" aria-label="Loading account" />;
 
+  // The extension opens /?pairing=<id>; a signed-in user approves it there.
+  const pairingId = new URLSearchParams(window.location.search).get("pairing");
+
   return (
     <>
       <Show when="signed-out">
         <AuthScreen />
       </Show>
       <Show when="signed-in">
-        <Library accountButton={<UserButton />} />
+        {pairingId ? (
+          <ExtensionConnect pairingId={pairingId} />
+        ) : (
+          <Library accountButton={<UserButton />} />
+        )}
       </Show>
     </>
   );

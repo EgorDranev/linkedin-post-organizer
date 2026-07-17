@@ -1385,6 +1385,64 @@ button.danger:hover { background: var(--danger-hover); }
   font-weight: 600;
 }
 
+.token-list {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.token-meta { color: var(--muted); font-size: var(--fs-sm); }
+.token-meta strong { color: inherit; }
+
+/* =====================================================================
+   Extension connect (pairing approval)
+   ===================================================================== */
+
+.connect-card {
+  max-width: 460px;
+  margin: 12vh auto 0;
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+}
+.connect-card h1 {
+  margin: 0 0 var(--space-3);
+  font-size: 1.4rem;
+}
+.connect-card p {
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+  line-height: 1.55;
+}
+.connect-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-h);
+  padding: 0 var(--space-5);
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow-xs);
+}
+.connect-card button:disabled { opacity: 0.6; cursor: default; }
+
 /* =====================================================================
    Responsive
    ===================================================================== */

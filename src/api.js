@@ -87,7 +87,8 @@ export const api = {
     }),
   getPostsInCollection: (collectionId) => request(`/api/collections/${collectionId}/posts`),
 
-  // account
+  // extension pairing + account
+  approvePairing: (id) => request(`/api/extension/pairings/${id}`, { method: "PATCH" }),
   deleteAccount: () => request("/api/account", { method: "DELETE" }),
   listExtensionTokens: () => request("/api/extension/tokens"),
   revokeExtensionToken: (id) => request(`/api/extension/tokens/${id}`, { method: "DELETE" }),
