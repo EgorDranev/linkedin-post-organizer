@@ -13,6 +13,7 @@ const formatDate = (value) =>
 
 export function Settings({ onClose }) {
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
@@ -63,11 +64,18 @@ export function Settings({ onClose }) {
 
   async function removeAccount() {
     setError("");
+    setDeleting(true);
     try {
       await api.deleteAccount();
       window.location.assign("/");
-    } catch {
-      setError("We couldn't delete your account. Please try again or contact support.");
+    } catch (err) {
+      // The server's message is precise about what was and wasn't deleted —
+      // prefer it over a generic claim that nothing happened.
+      setError(
+        err?.serverMessage ||
+          "We couldn't delete your account. Please try again or contact support."
+      );
+      setDeleting(false);
     }
   }
 
@@ -115,8 +123,12 @@ export function Settings({ onClose }) {
       ) : (
         <div className="danger-confirm">
           <p>This cannot be undone.</p>
-          <button className="danger" onClick={removeAccount}>Permanently delete</button>
-          <button className="ghost" onClick={() => setConfirming(false)}>Cancel</button>
+          <button className="danger" onClick={removeAccount} disabled={deleting}>
+            {deleting ? "Deleting…" : "Permanently delete"}
+          </button>
+          <button className="ghost" onClick={() => setConfirming(false)} disabled={deleting}>
+            Cancel
+          </button>
         </div>
       )}
       {error && <p className="error">{error}</p>}
