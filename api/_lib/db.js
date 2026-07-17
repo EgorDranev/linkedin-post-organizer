@@ -153,6 +153,19 @@ export function ensureSchema() {
   return schemaReady;
 }
 
+// --- account deletion --------------------------------------------------------
+
+// Delete in dependency order and always scope by owner.
+export async function deleteUserData(userId) {
+  await sql`DELETE FROM extension_pairings WHERE user_id = ${userId}`;
+  await sql`DELETE FROM extension_tokens WHERE user_id = ${userId}`;
+  await sql`DELETE FROM post_collections WHERE user_id = ${userId}`;
+  await sql`DELETE FROM post_tags WHERE user_id = ${userId}`;
+  await sql`DELETE FROM collections WHERE user_id = ${userId}`;
+  await sql`DELETE FROM tags WHERE user_id = ${userId}`;
+  await sql`DELETE FROM posts WHERE user_id = ${userId}`;
+}
+
 // --- owner-aware repository -------------------------------------------------
 
 export function createRepository(db) {

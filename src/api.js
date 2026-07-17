@@ -77,4 +77,9 @@ export const api = {
       body: JSON.stringify({ postId, collectionId }),
     }),
   getPostsInCollection: (collectionId) => request(`/api/collections/${collectionId}/posts`),
+
+  // account
+  deleteAccount: () => request("/api/account", { method: "DELETE" }),
+  listExtensionTokens: () => request("/api/extension/tokens"),
+  revokeExtensionToken: (id) => request(`/api/extension/tokens/${id}`, { method: "DELETE" }),
 };
