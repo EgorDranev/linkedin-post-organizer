@@ -132,9 +132,14 @@ it("dedupes a repeated capture that has no url by urn", async () => {
 
 - [ ] **GATE M0** (before backbone): merge the Phase-0 base PR.
 - [ ] **GATE M1** (after T9, before T11) — Egor:
-  - Clerk dashboard: production instance set to **email verification links only**, **restricted/invite-only** mode; `APP_ORIGIN` authorized.
+  - **Decision (2026-07-16): the beta runs on the Clerk development instance** — a Clerk production instance requires a custom domain, deferred until after the beta. Accepted trade-offs: "Development mode" watermark, dev-instance user cap (fine for 10–30 invitees), `pk_test`/`sk_test` keys in the production Vercel env. Revisit when adding a custom domain (then also update `APP_ORIGIN` and `extension/config.js`).
+  - Clerk dashboard (LinkedIn Saver app, development instance): **email verification links only**, Google/social disabled, **restricted/invite-only** mode; `APP_ORIGIN` authorized.
   - Vercel env vars set for production: `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, `APP_ORIGIN`, `FOUNDER_USER_ID` (real Clerk user id of the founder account), `DATABASE_URL`, optional `VITE_CHROME_STORE_URL`.
   - Merge (or approve merging) the accumulated task PRs into `main` in order.
+- [ ] **Deferred review items (check at T11; required before any PUBLIC Store listing):**
+  - Pairing channel binding: show a short confirmation code (e.g. first 6 hex of the verifier hash) in both the extension popup and the approval page and make the user match them, so a phished `?pairing=` link is detectable. Mitigated for the invite beta by capture-only tokens + one-shot approval (commit 6cf7c9a), but a mis-approved pairing can still pollute a library with attacker posts.
+  - Expired-pairing cleanup / rate limiting on the unauthenticated create endpoint (table-growth DoS surface).
+  - Runtime check at T11: extension create/redeem fetches must run from the background service worker (host_permissions bypass CORS); the API sets no CORS headers.
 - [ ] **T11 — IP Task 11: Production migration and end-to-end beta gate.** Branch `beta/11-release-gate` off `main` after M1. Orchestrator prepares everything; the two side-effectful steps are human-approved:
   - **GATE M2:** run `scripts/migrate-multi-account.mjs` against production Neon (Egor runs it, or explicitly approves the orchestrator running it once, after a `pg_dump`/Neon branch backup).
   - Execute the IP Task 11 end-to-end checklist mapped to the spec's acceptance criteria (magic link works; signed-out blocked; A/B isolation; pairing lifecycle; revoked token fails; capture creates one owned record; repeat capture no duplicate; search/tags/CSV scoped; account deletion invalidates extension; plain-language errors; clean production build + documented local setup).
