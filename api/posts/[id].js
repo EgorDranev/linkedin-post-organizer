@@ -26,7 +26,9 @@ export default async function handler(req, res) {
 
   if (req.method === "PATCH") {
     const { tags, suggested, status } = req.body || {};
-    let nextStatus = status ?? null;
+    // Only the two known statuses may be written; anything else falls back
+    // to the tag-derived value.
+    let nextStatus = status === "review" || status === "filed" ? status : null;
     if (Array.isArray(tags)) {
       await setPostTags(userId, id, tags);
       if (nextStatus == null) nextStatus = tags.length > 0 ? "filed" : "review";

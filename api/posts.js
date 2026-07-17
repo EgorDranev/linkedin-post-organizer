@@ -138,7 +138,8 @@ export default async function handler(req, res) {
       : [];
 
     let id;
-    if (existing.length) {
+    let duplicate = existing.length > 0;
+    if (duplicate) {
       id = existing[0].id;
       if (createOnly) {
         const post = await getPost(userId, id);
@@ -158,6 +159,9 @@ export default async function handler(req, res) {
           END
         WHERE user_id = ${userId} AND id = ${id}`;
     } else {
+      // A concurrent capture of the same URL can still slip past the SELECT
+      // above; the per-user unique index turns the loser into a duplicate
+      // response instead of an unhandled constraint violation.
       const rows = await sql`
         INSERT INTO posts (
           user_id, url, author, author_headline, text, status, suggested, metadata, media
@@ -165,14 +169,21 @@ export default async function handler(req, res) {
         VALUES (${userId}, ${postUrl}, ${author ?? null}, ${authorHeadline ?? null},
                 ${text}, 'review', ${suggestions}::jsonb,
                 ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
+        ON CONFLICT (user_id, url) WHERE url IS NOT NULL DO NOTHING
         RETURNING id`;
-      id = rows[0].id;
+      if (rows.length) {
+        id = rows[0].id;
+      } else {
+        const winner = await sql`SELECT id FROM posts WHERE user_id = ${userId} AND url = ${postUrl}`;
+        id = winner[0].id;
+        duplicate = true;
+      }
     }
 
     const post = await getPost(userId, id);
-    return res.status(existing.length ? 200 : 201).json({
+    return res.status(duplicate ? 200 : 201).json({
       ...post,
-      duplicate: existing.length > 0,
+      duplicate,
     });
   }
 
