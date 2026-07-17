@@ -1316,3 +1316,5 @@ button.danger:hover { background: var(--danger-hover); }
     transition-duration: 0.001ms !important;
   }
 }
+
+.empty-onboarding-note { color: var(--muted); font-size: var(--fs-sm); margin: 0; }

@@ -212,6 +212,21 @@ export function Library({ accountButton }) {
     return (
       <div className="app">
         <Settings onClose={() => setSettingsOpen(false)} />
+      {toast && (
+        <div
+          className={`toast${toast.type === "error" ? " toast--error" : ""}`}
+          role="status"
+        >
+          <span className="toast-msg">
+            {toast.type === "undo" ? "Post deleted" : toast.message}
+          </span>
+          {toast.type === "undo" && (
+            <button className="toast-btn" onClick={undoDelete}>
+              Undo
+            </button>
+          )}
+        </div>
+      )}
       </div>
     );
   }
@@ -292,14 +307,20 @@ export function Library({ accountButton }) {
                 Install the extension, then use LinkedIn's normal Save action.
                 The post will appear here automatically.
               </p>
-              <a
-                className="btn-primary"
-                href={import.meta.env.VITE_CHROME_STORE_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Install Chrome extension
-              </a>
+              {import.meta.env.VITE_CHROME_STORE_URL ? (
+                <a
+                  className="btn-primary"
+                  href={import.meta.env.VITE_CHROME_STORE_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Install Chrome extension
+                </a>
+              ) : (
+                <p className="empty-onboarding-note">
+                  Your beta invite includes the extension install link.
+                </p>
+              )}
             </section>
           )}
 
