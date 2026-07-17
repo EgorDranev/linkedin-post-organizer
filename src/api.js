@@ -58,35 +58,6 @@ export const api = {
     }),
   deletePost: (id) => request(`/api/posts/${id}`, { method: "DELETE" }),
 
-  // collections
-  getCollections: () => request("/api/collections"),
-  createCollection: (collection) =>
-    request("/api/collections", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(collection),
-    }),
-  updateCollection: (id, collection) =>
-    request(`/api/collections/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(collection),
-    }),
-  deleteCollection: (id) => request(`/api/collections/${id}`, { method: "DELETE" }),
-  addPostToCollection: (postId, collectionId) =>
-    request("/api/post-collection", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postId, collectionId }),
-    }),
-  removePostFromCollection: (postId, collectionId) =>
-    request("/api/post-collection", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postId, collectionId }),
-    }),
-  getPostsInCollection: (collectionId) => request(`/api/collections/${collectionId}/posts`),
-
   // extension pairing + account
   approvePairing: (id) => request(`/api/extension/pairings/${id}`, { method: "PATCH" }),
   deleteAccount: () => request("/api/account", { method: "DELETE" }),
