@@ -161,3 +161,34 @@ describe("post detail API ownership", () => {
     expect(sqlCallValues(update)).toContain("filed");
   });
 });
+
+describe("capture-only extension credential scope", () => {
+  beforeEach(() => {
+    requireUser.mockResolvedValue({ userId: "user_a", kind: "web" });
+    sql.mockResolvedValue([]);
+  });
+
+  it("lets only web sessions read the library", async () => {
+    await postsHandler(request(), response());
+    expect(requireUser).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      webOnly: true,
+    });
+  });
+
+  it("lets an extension credential capture posts", async () => {
+    getPost.mockResolvedValue({ id: 1 });
+    sql.mockResolvedValue([{ id: 1 }]);
+    await postsHandler(request({ method: "POST", body: { text: "hi" } }), response());
+    expect(requireUser).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      webOnly: false,
+    });
+  });
+
+  it("keeps post edits web-only", async () => {
+    getPost.mockResolvedValue(null);
+    await postHandler({ ...request({ method: "PATCH" }), query: { id: "1" } }, response());
+    expect(requireUser).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      webOnly: true,
+    });
+  });
+});
