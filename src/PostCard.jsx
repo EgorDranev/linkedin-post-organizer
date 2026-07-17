@@ -349,12 +349,6 @@ const ClockIcon = (props) => (
   </svg>
 );
 
-const FolderIcon = (props) => (
-  <svg width="16" height="16" {...ICON_BASE} {...props}>
-    <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2z" />
-  </svg>
-);
-
 // Filled triangle reads as "play" at small sizes; the others share ICON_BASE.
 const PlayIcon = (props) => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
@@ -405,10 +399,9 @@ function TypeBadge({ meta, variant }) {
   );
 }
 
-export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [], collections = [], onCollectionChange }) {
+export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
   const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
-  const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
   const [avatarBroken, setAvatarBroken] = useState(false);
 
   const displayText = useMemo(() => readableText(post.text), [post.text]);
@@ -466,7 +459,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const comments = social.comments;
   const reposts = social.reposts;
   const publishedText = post.metadata?.publishedText || "";
-  const hasStats = Boolean(reactions || comments || reposts || publishedText);
 
   useEffect(() => {
     if (!readerOpen) return undefined;
@@ -480,21 +472,21 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   // suggested tags not already accepted
   const pending = post.suggested.filter((s) => !post.tags.includes(s.tag));
 
-  const persist = (tags, suggested, collectionIds = []) =>
-    api.updatePost(post.id, { tags, suggested, collections: collectionIds }).then(onUpdated);
+  const persist = (tags, suggested) =>
+    api.updatePost(post.id, { tags, suggested }).then(onUpdated);
 
   const acceptTag = (tag) => {
     const tags = [...new Set([...post.tags, tag])];
     const suggested = post.suggested.filter((s) => s.tag !== tag);
-    persist(tags, suggested, post.collections.map(c => c.id));
+    persist(tags, suggested);
   };
 
   const dismissSuggestion = (tag) => {
     const suggested = post.suggested.filter((s) => s.tag !== tag);
-    persist(post.tags, suggested, post.collections.map(c => c.id));
+    persist(post.tags, suggested);
   };
 
-  const removeTag = (tag) => persist(post.tags.filter((t) => t !== tag), post.suggested, post.collections.map(c => c.id));
+  const removeTag = (tag) => persist(post.tags.filter((t) => t !== tag), post.suggested);
 
   const addCustom = (e) => {
     e.preventDefault();
@@ -502,30 +494,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     if (!tag) return;
     setDraft("");
     acceptTag(tag);
-  };
-
-  const toggleCollection = async (collectionId) => {
-    try {
-      const isInCollection = post.collections.some(c => c.id === collectionId);
-      let newCollections;
-
-      if (isInCollection) {
-        // Remove from collection
-        await api.removePostFromCollection(post.id, collectionId);
-        newCollections = post.collections.filter(c => c.id !== collectionId);
-      } else {
-        // Add to collection
-        await api.addPostToCollection(post.id, collectionId);
-        const collectionToAdd = collections.find(c => c.id === collectionId);
-        newCollections = [...post.collections, collectionToAdd];
-      }
-
-      // Update the post with new collection info
-      persist(post.tags, post.suggested, newCollections.map(c => c.id));
-      onCollectionChange && onCollectionChange(post.id, newCollections);
-    } catch (error) {
-      console.error("Error updating collection:", error);
-    }
   };
 
   const renderActions = () => (
@@ -554,7 +522,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
         className="card-btn card-btn--danger"
         title="Delete saved post"
         aria-label="Delete saved post"
-        onClick={() => api.deletePost(post.id).then(() => onDeleted(post.id))}
+        onClick={() => onDeleted(post.id)}
       >
         <TrashIcon />
       </button>
@@ -604,8 +572,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               {headline && <span className="card-headline">{headline}</span>}
               {headline && <span className="meta-sep" aria-hidden="true">·</span>}
               <span className="card-source-name">{source}</span>
-              <span className="meta-sep" aria-hidden="true">·</span>
-              <span>Saved {savedDate}</span>
             </span>
           </div>
           {renderActions()}
@@ -643,7 +609,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           </div>
         )}
 
-        {hasStats && (
         <div className="card-stats">
           {reactions ? (
             <span className="card-stat" title={`${reactions} reactions`}>
@@ -666,11 +631,13 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
           {publishedText ? (
             <span className="card-stat" title={`Published ${publishedText}`}>
               <ClockIcon width={14} height={14} />
-              {publishedText}
+              Published {publishedText}
             </span>
           ) : null}
+          <span className="card-stat card-stat--saved" title={`Saved ${savedDate}`}>
+            Saved {savedDate}
+          </span>
         </div>
-        )}
 
         {topicTags.length > 0 && (
           <div className="card-topics">
@@ -700,21 +667,33 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               >
                 {t}
               </button>
-              <button className="chip-x" onClick={() => removeTag(t)} title="Remove">
+              <button
+                className="chip-x"
+                onClick={() => removeTag(t)}
+                title="Remove"
+                aria-label={`Remove tag ${t}`}
+              >
                 ×
               </button>
             </span>
           ))}
 
+          {pending.length > 0 && <span className="tags-hint">Suggested</span>}
           {pending.map((s) => (
-            <span key={s.tag} className="chip suggested" title="Suggested">
-              <button className="chip-add" onClick={() => acceptTag(s.tag)}>
+            <span key={s.tag} className="chip suggested">
+              <button
+                className="chip-add"
+                onClick={() => acceptTag(s.tag)}
+                title="Add this tag"
+                aria-label={`Add suggested tag ${s.tag}`}
+              >
                 + {s.tag}
               </button>
               <button
                 className="chip-x"
                 onClick={() => dismissSuggestion(s.tag)}
                 title="Dismiss suggestion"
+                aria-label={`Dismiss suggested tag ${s.tag}`}
               >
                 ×
               </button>
@@ -728,40 +707,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               onChange={(e) => setDraft(e.target.value)}
             />
           </form>
-          
-          {/* Collections dropdown */}
-          <div className="collection-dropdown-container">
-            <button
-              className="collection-dropdown-btn"
-              onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}
-              title="Add to collection"
-              aria-label="Add to collection"
-            >
-              <FolderIcon width={15} height={15} />
-            </button>
-            
-            {showCollectionDropdown && (
-              <div className="collection-dropdown">
-                <div className="collection-dropdown-content">
-                  {collections.map((collection) => {
-                    const isInCollection = post.collections.some(c => c.id === collection.id);
-                    return (
-                      <div key={collection.id} className="collection-option">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={isInCollection}
-                            onChange={() => toggleCollection(collection.id)}
-                          />
-                          <span>{collection.name}</span>
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

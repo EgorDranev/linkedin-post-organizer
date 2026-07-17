@@ -36,7 +36,9 @@
 
   function friendlyError(raw) {
     if (!raw) return "server not reachable";
-    if (/server 401|403/i.test(raw)) return "wrong app password";
+    if (/server 401|not connected/i.test(raw)) {
+      return "reconnect the extension (click its toolbar icon)";
+    }
     if (/server 5\d\d/i.test(raw)) return "server error";
     if (/server 4\d\d/i.test(raw)) return "server rejected the save";
     if (/could not establish|failed to fetch|network/i.test(raw)) {
@@ -75,9 +77,10 @@
       return Promise.resolve({ ok: false, skipped: true });
     }
 
+    // Keep urn in the payload: it is the server's dedupe key for posts that
+    // have no extractable permalink (the in-memory 2.5s dedupe stays too).
     const body = { ...payload };
     if (options.createOnly) body.createOnly = true;
-    delete body.urn;
     return sendSaveMessage(body);
   };
 

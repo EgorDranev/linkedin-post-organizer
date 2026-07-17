@@ -1,16 +1,13 @@
-import { 
-  ensureSchema, 
+import {
+  ensureSchema,
   hasDatabase,
-  sql, 
-  allTags, 
-  hydrate, 
+  sql,
+  allTags,
+  hydrate,
   getPost,
-  removePostFromAllCollections,
-  addPostToCollection,
-  getCollectionsForPost
 } from "./_lib/db.js";
 import { suggestTagsAI } from "./_lib/ai.js";
-import { requireAuth } from "./_lib/auth.js";
+import { requireUser } from "./_lib/auth.js";
 
 const previewPosts = [
   {
@@ -99,14 +96,20 @@ function cleanPostUrl(value, metadata) {
 }
 
 export default async function handler(req, res) {
-  if (!requireAuth(req, res)) return;
+  // The extension credential is capture-only per the spec: it may POST a
+  // capture and nothing else. Reads and edits require the web session.
+  const actor = await requireUser(req, res, { webOnly: req.method !== "POST" });
+  if (!actor) return;
+  const { userId } = actor;
 
   if (req.method === "GET") {
     if (!hasDatabase) return res.status(200).json(previewPosts);
 
     await ensureSchema();
-    const rows = await sql`SELECT * FROM posts ORDER BY saved_at DESC, id DESC`;
-    const posts = await Promise.all(rows.map(hydrate));
+    const rows = await sql`
+      SELECT * FROM posts WHERE user_id = ${userId}
+      ORDER BY saved_at DESC, id DESC`;
+    const posts = await Promise.all(rows.map((row) => hydrate(userId, row)));
     return res.status(200).json(posts);
   }
 
@@ -121,26 +124,35 @@ export default async function handler(req, res) {
     const metadata = cleanJsonObject(req.body?.metadata);
     const media = cleanMedia(req.body?.media);
     const postUrl = cleanPostUrl(url, metadata);
+    const urn =
+      typeof req.body?.urn === "string" && req.body.urn.trim()
+        ? req.body.urn.trim().slice(0, 256)
+        : null;
     const hasMetadata = Object.keys(metadata).length > 0;
     const hasMedia = media.length > 0;
     if (!text || !text.trim()) {
       return res.status(400).json({ error: "text is required" });
     }
 
-    const tags = await allTags();
+    const tags = await allTags(userId);
     const suggestions = JSON.stringify(
       await suggestTagsAI(text, { existingTags: tags, author })
     );
 
+    // URL-less captures (some LinkedIn posts have no extractable permalink)
+    // dedupe by the post's urn instead, so a repeated Save never duplicates.
     const existing = postUrl
-      ? await sql`SELECT id FROM posts WHERE url = ${postUrl}`
-      : [];
+      ? await sql`SELECT id FROM posts WHERE user_id = ${userId} AND url = ${postUrl}`
+      : urn
+        ? await sql`SELECT id FROM posts WHERE user_id = ${userId} AND urn = ${urn}`
+        : [];
 
     let id;
-    if (existing.length) {
+    let duplicate = existing.length > 0;
+    if (duplicate) {
       id = existing[0].id;
       if (createOnly) {
-        const post = await getPost(id);
+        const post = await getPost(userId, id);
         return res.status(200).json({ ...post, duplicate: true, skipped: true });
       }
       await sql`
@@ -155,34 +167,58 @@ export default async function handler(req, res) {
             WHEN ${hasMedia} THEN ${JSON.stringify(media)}::jsonb
             ELSE media
           END
-        WHERE id = ${id}`;
+        WHERE user_id = ${userId} AND id = ${id}`;
     } else {
-      const rows = await sql`
-        INSERT INTO posts (
-          url, author, author_headline, text, status, suggested, metadata, media
-        )
-        VALUES (${postUrl}, ${author ?? null}, ${authorHeadline ?? null},
-                ${text}, 'review', ${suggestions}::jsonb,
-                ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
-        RETURNING id`;
-      id = rows[0].id;
-    }
-
-    // Handle collection associations if provided
-    if (req.body.collections && Array.isArray(req.body.collections)) {
-      // Remove post from all collections first
-      await removePostFromAllCollections(id);
-      
-      // Add to specified collections
-      for (const collectionId of req.body.collections) {
-        await addPostToCollection(id, collectionId);
+      // A concurrent capture of the same url (or, for url-less posts, the
+      // same urn) can still slip past the SELECT above. Match the ON
+      // CONFLICT arbiter to whichever partial unique index the row actually
+      // falls under, so the loser gets a duplicate response instead of an
+      // unhandled constraint violation. (The neon() client executes each
+      // tagged template as its own query — fragments can't be composed —
+      // so the two cases are written out in full.)
+      const rows = postUrl
+        ? await sql`
+            INSERT INTO posts (
+              user_id, url, urn, author, author_headline, text, status, suggested, metadata, media
+            )
+            VALUES (${userId}, ${postUrl}, ${urn}, ${author ?? null}, ${authorHeadline ?? null},
+                    ${text}, 'review', ${suggestions}::jsonb,
+                    ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
+            ON CONFLICT (user_id, url) WHERE url IS NOT NULL DO NOTHING
+            RETURNING id`
+        : urn
+          ? await sql`
+              INSERT INTO posts (
+                user_id, url, urn, author, author_headline, text, status, suggested, metadata, media
+              )
+              VALUES (${userId}, ${postUrl}, ${urn}, ${author ?? null}, ${authorHeadline ?? null},
+                      ${text}, 'review', ${suggestions}::jsonb,
+                      ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
+              ON CONFLICT (user_id, urn) WHERE urn IS NOT NULL AND url IS NULL DO NOTHING
+              RETURNING id`
+          : await sql`
+              INSERT INTO posts (
+                user_id, url, urn, author, author_headline, text, status, suggested, metadata, media
+              )
+              VALUES (${userId}, ${postUrl}, ${urn}, ${author ?? null}, ${authorHeadline ?? null},
+                      ${text}, 'review', ${suggestions}::jsonb,
+                      ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
+              RETURNING id`;
+      if (rows.length) {
+        id = rows[0].id;
+      } else {
+        const winner = postUrl
+          ? await sql`SELECT id FROM posts WHERE user_id = ${userId} AND url = ${postUrl}`
+          : await sql`SELECT id FROM posts WHERE user_id = ${userId} AND urn = ${urn}`;
+        id = winner[0].id;
+        duplicate = true;
       }
     }
 
-    const post = await getPost(id);
-    return res.status(existing.length ? 200 : 201).json({
+    const post = await getPost(userId, id);
+    return res.status(duplicate ? 200 : 201).json({
       ...post,
-      duplicate: existing.length > 0,
+      duplicate,
     });
   }
 

@@ -3,22 +3,35 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview",
     "ship": "node scripts/ship.mjs",
     "ext:watch": "node scripts/ext-watch.mjs",
-    "export": "node scripts/export-saved.mjs"
+    "extension:package": "cd extension && zip -r ../linkedin-saver-extension.zip . -x 'dev-reload.js' '*.DS_Store'",
+    "export": "node scripts/export-saved.mjs",
+    "migrate:multi-account": "node scripts/migrate-multi-account.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@clerk/backend": "^3.11.5",
+    "@clerk/react": "^6.12.3",
     "@neondatabase/serverless": "^0.10.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^29.1.1",
     "vite": "^5.4.11",
+    "vitest": "^4.1.10",
     "ws": "^8.18.0"
   }
 }

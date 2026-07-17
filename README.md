@@ -1,174 +1,134 @@
 # LinkedIn Posts Organizer
 
-**[Live demo](https://linkedin-saver.vercel.app)** (password-protected) · **[Case study](CASE_STUDY.md)** · MIT licensed
+**A private, searchable library for the LinkedIn posts you save.** Keep using
+LinkedIn's own **Save** button — LinkedIn Saver captures the post into your
+account with suggested tags, so you can actually re-find it weeks later.
 
-A **save-and-classify** tool for LinkedIn posts — like Raindrop.io, but it
-**suggests tags, writes one-line summaries, and clusters your saved posts into
-themes** using **Claude** (Anthropic). Set `ANTHROPIC_API_KEY` to turn the AI on;
-with no key it transparently falls back to fast offline heuristics, so the app
-always works.
+**Status: hosted private beta.** The app runs at
+[linkedin-saver.vercel.app](https://linkedin-saver.vercel.app); sign-ups are
+invite-only, and the Chrome extension ships through an unlisted Chrome Web
+Store link shared with invitees. The repository is public and MIT-licensed —
+see [Case study](CASE_STUDY.md) for the product story.
 
-Deployed on **Vercel**: a Vite + React frontend, serverless functions in `/api`,
-and **Neon Postgres** for storage.
+## Using the beta (invited users)
 
-> **Why it exists.** LinkedIn's Saved list is chronological, unsearchable, and
-> untaggable — saving a post is effectively losing it. The value isn't in *saving*;
-> it's in *re-finding the right post weeks later*. So the structure (tags, summaries,
-> themes) has to appear automatically at capture time. More in the [case study](CASE_STUDY.md).
+No Vercel account, database, API key, or Chrome developer mode required:
 
-| Part | What it does | Stack |
-|------|--------------|-------|
-| `src/` | Review posts, accept/edit tags | Vite + React |
-| `api/` | Store posts, suggest tags | Vercel serverless functions |
-| `api/_lib/` | DB layer + heuristic tagger | `@neondatabase/serverless` |
-| `extension/` | Auto-capture on LinkedIn native Save | Chrome MV3 |
+1. **Sign in with your email.** Enter your invited email address on the site
+   and click the magic sign-in link you receive (passwordless, via Clerk).
+2. **Install the extension** from the unlisted Chrome Web Store link in your
+   empty library / invite.
+3. **Connect once.** The extension popup explains what is captured and, after
+   your consent, pairs itself with your account using a revocable, capture-only
+   credential. No LinkedIn password or session is ever stored.
+4. **Save normally.** On linkedin.com, press LinkedIn's built-in **Save** on
+   any post — it lands in your private library with suggested tags. Find it
+   later with full-text/author search or tag filters, and export to CSV from
+   Settings anytime.
+
+If the extension gets disconnected it tells you and offers a one-click
+reconnect; failed captures show a clear error and are never silently retried.
+
+## Data and privacy
+
+The extension captures a post's visible text, author/source details, links,
+media references, and timestamps **only when you press Save** — nothing else.
+Your library is private per account, encrypted in transit, never used for
+advertising, and never sold. You can export CSV, revoke the extension, or
+permanently delete your account in Settings. Full details:
+[PRIVACY.md](PRIVACY.md).
+
+## Demo
+
+Save a post on LinkedIn → it appears in your library with suggested tags →
+search or filter to re-find it.
+
+<!-- TODO: add capture → library → search screenshots/GIF before the Store
+submission (see docs/chrome-web-store-checklist.md). -->
 
 ## Architecture
+
+A Vite + React frontend and Vercel serverless functions in `/api`, backed by
+Neon Postgres. Clerk owns authentication (email magic links only); every data
+record is owned by a user, and the API resolves the signed-in user server-side
+and scopes every read and write to that user.
 
 ```mermaid
 flowchart LR
     EXT["Chrome MV3 extension<br/>(content script on linkedin.com)"]
-    UI["Web app<br/>Vite + React"]
+    UI["Web app<br/>Vite + React + Clerk"]
+    CLERK{{"Clerk<br/>email magic links"}}
     subgraph API ["Vercel serverless / api"]
-      ROUTES["routes<br/>posts · collections · tags · auth"]
-      AI["_lib/ai.js"]
-      HEUR["_lib/<br/>tagger · summarize · themes"]
+      ROUTES["routes<br/>posts · tags · extension pairing"]
+      TAGGER["_lib/tagger.js<br/>offline tag heuristics"]
     end
-    DB[("Neon Postgres")]
-    CLAUDE{{"Claude · Anthropic"}}
+    DB[("Neon Postgres<br/>user-owned records")]
 
-    EXT -- "native Save → POST /api/posts" --> ROUTES
-    UI -- "fetch" --> ROUTES
+    UI -- "session" --> CLERK
+    EXT -- "native Save → POST /api/posts<br/>Bearer capture token" --> ROUTES
+    UI -- "fetch (Clerk session)" --> ROUTES
+    ROUTES -- "verify" --> CLERK
+    ROUTES --> TAGGER
     ROUTES --> DB
-    ROUTES --> AI
-    AI -- "ANTHROPIC_API_KEY set" --> CLAUDE
-    AI -. "no key / API error → fallback" .-> HEUR
 ```
 
-The AI layer and the offline heuristics return the **same response shape**, so the
-fallback is invisible to the rest of the app — it works with or without a key.
+| Part | What it does | Stack |
+|------|--------------|-------|
+| `src/` | Library, search, tag filters, Settings | Vite + React + Clerk |
+| `api/` | Owned posts/tags, extension pairing, CSV export | Vercel serverless functions |
+| `api/_lib/` | DB layer + offline heuristic tagger | `@neondatabase/serverless` |
+| `extension/` | Capture on LinkedIn's native Save | Chrome MV3 |
 
-## Deploy
+Tag suggestions in the hosted beta use the offline heuristics in
+`api/_lib/tagger.js` (author label → hashtags → existing-vocabulary matches →
+frequent phrases); no AI key is required or used.
+
+## Contributor / self-hosted setup (advanced)
+
+Self-hosting is **not** the normal user path — it's for contributors and
+tinkerers. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
 
 ```bash
 npm install
-vercel link            # link to / create the Vercel project
-# Connect a Neon Postgres store in the Vercel dashboard
-#   Storage → Create → Neon  (injects POSTGRES_URL automatically)
-vercel --prod          # deploy
+cp .env.example .env.local   # fill in your own Neon + Clerk values
+vercel dev                   # frontend + /api on http://localhost:3000
+npm test
+npm run build
 ```
 
-The schema is created automatically on first request (idempotent
-`CREATE TABLE IF NOT EXISTS`), so there's no migration step.
-
-## Shipping changes
-
-When a feature or fix is ready, commit and push the current branch with:
+If you are migrating a pre-account (single-user) database, assign the existing
+records to a founder account once:
 
 ```bash
-npm run ship -- "Short feature/fix summary"
+FOUNDER_USER_ID=<clerk_user_id> npm run migrate:multi-account
 ```
 
-The ship command runs the production build, stages local changes, creates a
-commit with the supplied message, and pushes the current branch to `origin`.
-It refuses to push directly from `main` or `master` unless `SHIP_ALLOW_MAIN=1`
-is set.
+The migration is idempotent — running it twice changes nothing the second time.
 
-## Local development
+## Extension development and packaging
 
-```bash
-npm install
-vercel env pull        # pull POSTGRES_URL / DATABASE_URL into .env
-vercel dev             # frontend + /api functions on http://localhost:3000
-```
+1. Chrome → `chrome://extensions` → enable **Developer mode** →
+   **Load unpacked** → `extension/`.
+2. The extension's backend origin is fixed in `extension/config.js`
+   (`https://linkedin-saver.vercel.app`). Self-hosters change `appOrigin`
+   there before loading or packaging.
+3. `npm run ext:watch` auto-reloads the unpacked extension (and open LinkedIn
+   tabs) whenever a file under `extension/` changes.
+4. `npm run extension:package` builds `linkedin-saver-extension.zip` for the
+   Chrome Web Store (dev-only files excluded). Don't commit the ZIP. The
+   submission steps live in
+   [docs/chrome-web-store-checklist.md](docs/chrome-web-store-checklist.md).
 
-Open http://localhost:3000 and paste a post to try the **save → suggest → accept**
-loop. `vercel dev` runs the same serverless functions you deploy.
+> The content script reads LinkedIn's DOM, whose class names change often. If
+> capture stops working, inspect the native **Save** button on a feed post and
+> update the selectors in [`extension/lib/extract.js`](extension/lib/extract.js)
+> and [`extension/native-save.js`](extension/native-save.js).
 
-## Browser extension
+## License and security
 
-1. Chrome → `chrome://extensions` → enable **Developer mode** → **Load unpacked** → `extension/`.
-2. Click the extension icon, set **App server URL** to your Vercel URL (or
-   `http://localhost:3000` for local dev), password if configured, and **Save settings**.
-3. On linkedin.com, use LinkedIn’s built-in **Save** on any feed post — it is sent to your app automatically.
-
-### Auto-reload while editing the extension
-
-Vercel deploys the web app only; Chrome still runs your local unpacked extension. To reload it on save:
-
-```bash
-npm run ext:watch
-```
-
-Keep that terminal open. After you change any file under `extension/`, the watcher reloads the extension and refreshes open LinkedIn tabs. Reload the unpacked extension once after pulling this feature so `dev-reload.js` is picked up.
-
-> The content script reads LinkedIn’s DOM, whose class names change often. If auto-capture stops working:
-> 1. Open DevTools on a feed post and inspect the native **Save** button (`aria-label`, action bar classes).
-> 2. Update selectors in [`extension/lib/extract.js`](extension/lib/extract.js) (post text/author) and [`extension/native-save.js`](extension/native-save.js) (save button detection).
-> 3. Confirm the popup shows a connected server and the correct password (`/api/session`).
-
-## How tag suggestion works
-
-With `ANTHROPIC_API_KEY` set, [`api/_lib/ai.js`](api/_lib/ai.js) asks **Claude**
-to tag each post against this taxonomy, reusing your existing vocabulary so the
-tag set stays consistent:
-
-- `author`: who wrote the post (one canonical `author: name` label).
-- `topic`: what the post is about.
-- `format`: post, article, video, carousel, link, event.
-- `source`: LinkedIn, newsletter, company site, publication.
-- `intent`: inspiration, reference, lead, follow-up, idea, read later.
-
-With **no key (or on any API error)** it falls back to the pure local heuristics
-in [`api/_lib/tagger.js`](api/_lib/tagger.js), ranked: author label → hashtags →
-existing-vocabulary matches → frequent phrases/keywords (URL/domain/name noise
-filtered out). The AI and heuristic functions return the exact same shape, so
-the rest of the app is unchanged either way.
-
-### Configuration
-
-| Env var | Required | Default | Purpose |
-|---------|----------|---------|---------|
-| `ANTHROPIC_API_KEY` | no | — | Turns on AI tags, summaries, and themes. Unset ⇒ offline heuristics. |
-| `ANTHROPIC_MODEL` | no | `claude-haiku-4-5-20251001` | Override the Claude model. |
-| `AI_DEBUG` | no | — | Set to `1` to log when a call falls back to the heuristic. |
-
-Add `ANTHROPIC_API_KEY` in the Vercel dashboard (Settings → Environment
-Variables) for the deployed app, and to your local `.env` for `vercel dev` and
-the export script.
-
-## Export: themed page + spreadsheet
-
-Turn your saved posts into two shareable artifacts — offline, no LLM, no extra
-deps:
-
-```bash
-npm run export -- --input posts.json        # array of post objects
-npm run export -- --input export.csv         # the app's own CSV export
-vercel env pull && npm run export            # straight from Postgres
-```
-
-Writes to `./export/` (override with `--out <dir>`):
-
-- **`linkedin-saved-posts.html`** — a single self-contained page (open by
-  double-click, works offline): full-text search, theme filters, sort, and
-  expandable cards. Holds a short excerpt + one-line summary per post.
-- **`linkedin-saved-posts.xlsx`** — one row per post on a **Posts** sheet
-  (incl. the full text) plus a **By Theme** sheet grouped by cluster.
-
-The summaries and themes use **Claude** when `ANTHROPIC_API_KEY` is set, and fall
-back to the offline, deterministic engines otherwise:
-
-- `api/_lib/ai.js` — Claude-powered summaries (batched) + theme clustering, each
-  wrapping the heuristic below as a fallback.
-- `api/_lib/summarize.js` — lead-sentence one-line summaries (fallback).
-- `api/_lib/themes.js` — hashtag-weighted, document-frequency clustering into
-  ~6–10 named themes (fallback).
-
-To produce `posts.json` from a deployed instance:
-`curl -s https://<your-app>/api/posts -H "cookie: <session>" > posts.json`.
-
-## Scope (v1)
-
-Built: save a post → see suggested tags → accept / reject / add. Manual paste + extension auto-capture on LinkedIn Save.
-Deferred (schema already supports them): browse/filter by tag, tag management, collections.
+- [MIT License](LICENSE).
+- Security reports: use GitHub's
+  [private security-advisory form](https://github.com/EgorDranev/linkedin-post-organizer/security/advisories/new)
+  — see [SECURITY.md](SECURITY.md).
+- Privacy policy: [PRIVACY.md](PRIVACY.md).
+- Everything else: [issues](https://github.com/EgorDranev/linkedin-post-organizer/issues).

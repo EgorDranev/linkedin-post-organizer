@@ -1,199 +1,105 @@
 // Runs in the extension's own origin, so it can POST to the app's API
 // without the page's CORS / mixed-content restrictions.
 //
-// Target server is configurable from the popup (stored in chrome.storage).
-// Default points at local dev; set it to your Vercel URL once deployed.
+// The server origin is fixed at package time (config.js). Auth is a paired
+// capture token (lis_ext_…) minted through the short-lived pairing flow; the
+// extension never stores a browser session or magic link.
 
-importScripts("dev-reload.js");
+importScripts("config.js", "lib/pairing-core.js");
 
-const DEFAULT_SERVER = "http://localhost:3000";
-const SCRAPE_TIMEOUT_MS = 12000;
+async function startPairing() {
+  const verifier = globalThis.LIS.createPairingVerifier();
+  const response = await fetch(`${LIS_CONFIG.appOrigin}/api/extension/pairings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ verifier }),
+  });
+  if (!response.ok) throw new Error("Could not start connection");
+  const pairing = await response.json();
+  await chrome.storage.local.set({ pairingId: pairing.id, pairingVerifier: verifier });
+  await chrome.tabs.create({ url: `${LIS_CONFIG.appOrigin}/?pairing=${encodeURIComponent(pairing.id)}` });
+  return pairing;
+}
 
-async function getConfig() {
-  const { serverUrl, appPassword } = await chrome.storage.local.get([
-    "serverUrl",
-    "appPassword",
-  ]);
-  return {
-    server: (serverUrl || DEFAULT_SERVER).replace(/\/$/, ""),
-    password: appPassword || "",
+async function pollPairing() {
+  const { pairingId, pairingVerifier } = await chrome.storage.local.get(["pairingId", "pairingVerifier"]);
+  if (!pairingId || !pairingVerifier) return { state: "disconnected" };
+  const response = await fetch(`${LIS_CONFIG.appOrigin}/api/extension/pairings/${pairingId}/redeem`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ verifier: pairingVerifier }),
+  });
+  if (response.status === 202) return { state: "waiting" };
+  if (!response.ok) {
+    // Terminal failure (expired/consumed/not found): the pairing is dead,
+    // so stop holding its one-time verifier and let the next poll bail out
+    // via the disconnected branch above instead of re-failing forever.
+    await chrome.storage.local.remove(["pairingId", "pairingVerifier"]);
+    throw new Error("Connection request expired");
+  }
+  const { token } = await response.json();
+  await chrome.storage.local.set({ extensionToken: token });
+  await chrome.storage.local.remove(["pairingId", "pairingVerifier", "needsReconnect"]);
+  return { state: "connected" };
+}
+
+async function savePost(payload) {
+  const { extensionToken } = await chrome.storage.local.get(["extensionToken"]);
+  if (!extensionToken) throw new Error("extension is not connected");
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${extensionToken}`,
   };
+  const response = await fetch(`${LIS_CONFIG.appOrigin}/api/posts`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 401) {
+    // The token was revoked or the account is gone. Drop it so the popup
+    // shows reconnect guidance instead of silently failing forever.
+    await chrome.storage.local.remove(["extensionToken"]);
+    await chrome.storage.local.set({ needsReconnect: true });
+    const err = new Error("server 401");
+    err.reconnect = true;
+    throw err;
+  }
+  if (!response.ok) throw new Error(`server ${response.status}`);
+  return response.json();
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === "scrape-post-url") {
-    scrapePostUrl(msg.url)
-      .then((payload) => sendResponse({ ok: true, payload }))
-      .catch((err) => {
-        const message = err?.message || "scrape failed";
-        sendResponse({ ok: false, error: message });
-      });
-
+  if (msg?.type === "start-pairing") {
+    startPairing()
+      .then((pairing) => sendResponse({ ok: true, pairing }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || "Could not start connection" }));
     return true;
   }
 
-  if (msg?.type === "existing-post-urls") {
-    getConfig()
-      .then(({ server, password }) => {
-        const headers = {};
-        if (password) headers["x-app-password"] = password;
-        return fetch(`${server}/api/posts`, { headers });
+  if (msg?.type === "poll-pairing") {
+    pollPairing()
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || "Connection request expired" }));
+    return true;
+  }
+
+  if (msg?.type === "save-post") {
+    savePost(msg.payload)
+      .then((post) => {
+        flashBadge(post.duplicate ? "•" : "✓", "#0a66c2");
+        sendResponse({ ok: true, post });
       })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`server ${r.status}`);
-        const posts = await r.json();
-        const urls = [];
-        for (const post of posts) {
-          if (post.url) urls.push(post.url);
-          if (post.metadata?.urn) {
-            urls.push(`https://www.linkedin.com/feed/update/${post.metadata.urn}/`);
-          }
-        }
+      .catch((err) => {
+        flashBadge("!", "#c0392b");
         sendResponse({
-          ok: true,
-          urls,
+          ok: false,
+          error: err?.message || "save failed",
+          reconnect: err?.reconnect === true,
         });
-      })
-      .catch((err) => {
-        const msg = err?.message || "lookup failed";
-        sendResponse({ ok: false, error: msg });
       });
-
-    return true;
+    return true; // keep the message channel open for the async response
   }
-
-  if (msg?.type !== "save-post") return;
-
-  getConfig()
-    .then(({ server, password }) => {
-      const headers = { "Content-Type": "application/json" };
-      if (password) headers["x-app-password"] = password;
-      return fetch(`${server}/api/posts`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(msg.payload),
-      });
-    })
-    .then(async (r) => {
-      if (!r.ok) throw new Error(`server ${r.status}`);
-      const post = await r.json();
-      flashBadge(post.duplicate ? "•" : "✓", "#0a66c2");
-      sendResponse({ ok: true, post });
-    })
-    .catch((err) => {
-      flashBadge("!", "#c0392b");
-      const msg = err?.message || "save failed";
-      sendResponse({ ok: false, error: msg });
-    });
-
-  return true; // keep the message channel open for the async response
 });
-
-function chromeCall(fn, ...args) {
-  return new Promise((resolve, reject) => {
-    fn(...args, (result) => {
-      const err = chrome.runtime.lastError;
-      if (err) reject(new Error(err.message));
-      else resolve(result);
-    });
-  });
-}
-
-function waitForTabComplete(tabId) {
-  return new Promise((resolve) => {
-    let timer = null;
-
-    function done() {
-      if (timer) clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(onUpdated);
-      resolve();
-    }
-
-    function onUpdated(updatedTabId, info) {
-      if (updatedTabId === tabId && info.status === "complete") done();
-    }
-
-    chrome.tabs.onUpdated.addListener(onUpdated);
-    chrome.tabs.get(tabId, (tab) => {
-      if (chrome.runtime.lastError || tab?.status === "complete") done();
-      else timer = setTimeout(done, SCRAPE_TIMEOUT_MS);
-    });
-  });
-}
-
-async function scrapePostUrl(url) {
-  if (!/^https:\/\/(?:www\.)?linkedin\.com\/feed\/update\/urn:li:activity:\d+\/?/i.test(url || "")) {
-    throw new Error("not a LinkedIn post URL");
-  }
-
-  const tab = await chromeCall(chrome.tabs.create, { url, active: false });
-  const tabId = tab?.id;
-  if (!tabId) throw new Error("could not open post");
-
-  try {
-    await waitForTabComplete(tabId);
-    await chromeCall(chrome.scripting.executeScript, {
-      target: { tabId },
-      files: ["lib/chrome-safe.js", "lib/extract.js"],
-    });
-
-    const [result] = await chromeCall(chrome.scripting.executeScript, {
-      target: { tabId },
-      func: async () => {
-        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const wantedUrn = location.href.match(/urn:li:activity:\d+/i)?.[0] || "";
-        const selectors = [
-          ".update-components-text",
-          ".feed-shared-inline-show-more-text",
-          ".update-components-actor",
-          ".feed-shared-actor",
-          "[data-test-id*='commentary']",
-          "[data-test-id*='post-content']",
-        ].join(", ");
-
-        for (let attempt = 0; attempt < 24; attempt += 1) {
-          const hasContent = document.querySelector(selectors);
-          if (hasContent || document.readyState === "complete") {
-            const buttons = document.querySelectorAll("button, [role='button']");
-            for (const button of buttons) {
-              const text = (
-                button.getAttribute("aria-label") ||
-                button.textContent ||
-                ""
-              ).trim();
-              if (/see more|show more/i.test(text)) button.click();
-            }
-          }
-
-          const posts = [...(globalThis.LIS?.findPosts?.() || [])];
-          const post =
-            posts.find((el) => globalThis.LIS?.getPostUrn?.(el) === wantedUrn) ||
-            globalThis.LIS?.findBestPostCandidate?.(document.body) ||
-            posts[0];
-          if (post) {
-            const payload = globalThis.LIS.extract(post);
-            const hasRealText =
-              payload?.text && !/^\[LinkedIn post .+ no text extracted\]/i.test(payload.text);
-            if (payload?.author || hasRealText) return payload;
-          }
-
-          window.scrollTo({ top: 0, behavior: "auto" });
-          await sleep(500);
-        }
-
-        const post =
-          globalThis.LIS?.findBestPostCandidate?.(document.body) ||
-          globalThis.LIS?.findPosts?.()[0];
-        return post ? globalThis.LIS.extract(post) : null;
-      },
-    });
-
-    if (!result?.result) throw new Error("post content not found");
-    return result.result;
-  } finally {
-    chrome.tabs.remove(tabId);
-  }
-}
 
 function flashBadge(text, color) {
   chrome.action.setBadgeBackgroundColor({ color });
