@@ -11,9 +11,21 @@ await sql`ALTER TABLE post_tags ADD COLUMN IF NOT EXISTS user_id TEXT`;
 await sql`ALTER TABLE collections ADD COLUMN IF NOT EXISTS user_id TEXT`;
 await sql`ALTER TABLE post_collections ADD COLUMN IF NOT EXISTS user_id TEXT`;
 
-const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM posts WHERE user_id IS NULL`;
+// Guard on unowned rows in EVERY migrated table, not just posts: tags and
+// collections outlive their posts in this schema, and a partial earlier run
+// can leave later tables unowned while posts are already backfilled. The
+// statements below run autocommit (no transaction), so entering the SET NOT
+// NULL block with any stragglers would abort half-migrated.
+const [{ count }] = await sql`
+  SELECT (
+    (SELECT COUNT(*) FROM posts WHERE user_id IS NULL) +
+    (SELECT COUNT(*) FROM tags WHERE user_id IS NULL) +
+    (SELECT COUNT(*) FROM collections WHERE user_id IS NULL) +
+    (SELECT COUNT(*) FROM post_tags WHERE user_id IS NULL) +
+    (SELECT COUNT(*) FROM post_collections WHERE user_id IS NULL)
+  )::int AS count`;
 if (count > 0 && !founderUserId) {
-  throw new Error("FOUNDER_USER_ID is required while unowned posts exist");
+  throw new Error("FOUNDER_USER_ID is required while unowned rows exist");
 }
 if (founderUserId) {
   await sql`UPDATE posts SET user_id = ${founderUserId} WHERE user_id IS NULL`;
@@ -21,6 +33,10 @@ if (founderUserId) {
   await sql`UPDATE collections SET user_id = ${founderUserId} WHERE user_id IS NULL`;
   await sql`UPDATE post_tags pt SET user_id = p.user_id FROM posts p WHERE pt.post_id = p.id AND pt.user_id IS NULL`;
   await sql`UPDATE post_collections pc SET user_id = p.user_id FROM posts p WHERE pc.post_id = p.id AND pc.user_id IS NULL`;
+  // Join rows whose post no longer exists get the founder id directly, so
+  // SET NOT NULL below cannot trip over orphans.
+  await sql`UPDATE post_tags SET user_id = ${founderUserId} WHERE user_id IS NULL`;
+  await sql`UPDATE post_collections SET user_id = ${founderUserId} WHERE user_id IS NULL`;
 }
 
 await sql`ALTER TABLE posts ALTER COLUMN user_id SET NOT NULL`;

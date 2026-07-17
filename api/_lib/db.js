@@ -204,7 +204,10 @@ export function createRepository(db) {
       id: Number(row.id), url: row.url, author: row.author,
       authorHeadline: row.author_headline, text: row.text,
       savedAt: row.saved_at, status: row.status,
-      metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+      metadata:
+        row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+          ? row.metadata
+          : {},
       media: Array.isArray(row.media) ? row.media : [],
       tags: await tagsForPost(userId, row.id),
       suggested: Array.isArray(row.suggested) ? row.suggested : [],
