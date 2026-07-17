@@ -48,6 +48,8 @@ await sql`ALTER TABLE posts DROP CONSTRAINT IF EXISTS posts_url_key`;
 await sql`ALTER TABLE tags DROP CONSTRAINT IF EXISTS tags_name_key`;
 await sql`ALTER TABLE collections DROP CONSTRAINT IF EXISTS collections_name_key`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS posts_user_url_unique ON posts (user_id, url) WHERE url IS NOT NULL`;
+await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS urn TEXT`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS posts_user_urn_unique ON posts (user_id, urn) WHERE urn IS NOT NULL AND url IS NULL`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS tags_user_name_unique ON tags (user_id, name)`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS collections_user_name_unique ON collections (user_id, name)`;
 

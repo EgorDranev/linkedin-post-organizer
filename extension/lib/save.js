@@ -77,9 +77,10 @@
       return Promise.resolve({ ok: false, skipped: true });
     }
 
+    // Keep urn in the payload: it is the server's dedupe key for posts that
+    // have no extractable permalink (the in-memory 2.5s dedupe stays too).
     const body = { ...payload };
     if (options.createOnly) body.createOnly = true;
-    delete body.urn;
     return sendSaveMessage(body);
   };
 

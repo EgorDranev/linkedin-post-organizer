@@ -98,6 +98,7 @@ export function ensureSchema() {
       )`;
     await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`;
     await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS media JSONB NOT NULL DEFAULT '[]'::jsonb`;
+    await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS urn TEXT`;
     await sql`
       CREATE TABLE IF NOT EXISTS tags (
         id      BIGSERIAL PRIMARY KEY,
@@ -127,6 +128,7 @@ export function ensureSchema() {
         PRIMARY KEY (post_id, collection_id)
       )`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS posts_user_url_unique ON posts (user_id, url) WHERE url IS NOT NULL`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS posts_user_urn_unique ON posts (user_id, urn) WHERE urn IS NOT NULL AND url IS NULL`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS tags_user_name_unique ON tags (user_id, name)`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS collections_user_name_unique ON collections (user_id, name)`;
     await sql`
