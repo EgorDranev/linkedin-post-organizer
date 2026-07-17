@@ -6,7 +6,6 @@ import { PostCard } from "./PostCard.jsx";
 import { AuthScreen } from "./AuthScreen.jsx";
 import { BrowseControls } from "./BrowseControls.jsx";
 import { exportPostsCsv } from "./exportCsv.js";
-import { CollectionSidebar } from "./CollectionSidebar.jsx";
 import { Settings } from "./Settings.jsx";
 import { ExtensionConnect } from "./ExtensionConnect.jsx";
 
@@ -53,7 +52,6 @@ const GearIcon = () => (
 
 export function Library({ accountButton }) {
   const [posts, setPosts] = useState([]);
-  const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -62,44 +60,28 @@ export function Library({ accountButton }) {
   // browse state
   const [query, setQuery] = useState("");
   const [activeTags, setActiveTags] = useState([]);
-  const [selectedCollection, setSelectedCollection] = useState(null);
 
   const reload = useCallback(() => {
     setLoading(true);
     setError(null);
     setSessionExpired(false);
-    
-    // Load both posts and collections
-    Promise.all([
-      api.listPosts(),
-      api.getCollections()
-    ])
-    .then(([loadedPosts, loadedCollections]) => {
-      setPosts(loadedPosts);
-      
-      // Add post count to each collection
-      const collectionsWithCounts = loadedCollections.map(collection => {
-        const postCount = loadedPosts.filter(post => 
-          post.collections.some(c => c.id === collection.id)
-        ).length;
-        return { ...collection, postCount };
-      });
-      
-      setCollections(collectionsWithCounts);
-    })
-    .catch((e) => {
-      if (e instanceof AuthError) {
-        setPosts([]);
-        setCollections([]);
-        setQuery("");
-        setActiveTags([]);
-        setSelectedCollection(null);
-        setSessionExpired(true);
-      } else {
-        setError(e.message);
-      }
-    })
-    .finally(() => setLoading(false));
+
+    api
+      .listPosts()
+      .then((loadedPosts) => {
+        setPosts(loadedPosts);
+      })
+      .catch((e) => {
+        if (e instanceof AuthError) {
+          setPosts([]);
+          setQuery("");
+          setActiveTags([]);
+          setSessionExpired(true);
+        } else {
+          setError(e.message);
+        }
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -186,36 +168,6 @@ export function Library({ accountButton }) {
     []
   );
 
-  // Update collection in state when a post's collections change
-  const onCollectionChange = (postId, newCollections) => {
-    setPosts(prev => 
-      prev.map(p => 
-        p.id === postId ? { ...p, collections: newCollections } : p
-      )
-    );
-  };
-
-  // Add a new collection to state
-  const onCollectionCreated = (newCollection) => {
-    setCollections(prev => [...prev, { ...newCollection, postCount: 0 }]);
-  };
-
-  // Update a collection in state
-  const onCollectionEdited = (updatedCollection) => {
-    setCollections(prev => 
-      prev.map(c => c.id === updatedCollection.id ? updatedCollection : c)
-    );
-  };
-
-  // Remove a collection from state
-  const onCollectionDeleted = (deletedId) => {
-    setCollections(prev => prev.filter(c => c.id !== deletedId));
-    // If the deleted collection was selected, go back to all posts
-    if (selectedCollection && selectedCollection.id === deletedId) {
-      setSelectedCollection(null);
-    }
-  };
-
   // Tag vocabulary + counts, derived from accepted tags on loaded posts.
   const tagCounts = useMemo(() => {
     const counts = new Map();
@@ -227,7 +179,7 @@ export function Library({ accountButton }) {
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }, [posts]);
 
-  // Apply search + tag + collection filters. Tags combine with AND (narrowing).
+  // Apply search + tag filters. Tags combine with AND (narrowing).
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return posts.filter((p) => {
@@ -236,10 +188,9 @@ export function Library({ accountButton }) {
         p.text.toLowerCase().includes(q) ||
         (p.author || "").toLowerCase().includes(q);
       const matchesTags = activeTags.every((t) => p.tags.includes(t));
-      const matchesCollection = !selectedCollection || p.collections.some(c => c.id === selectedCollection.id);
-      return matchesQuery && matchesTags && matchesCollection;
+      return matchesQuery && matchesTags;
     });
-  }, [posts, query, activeTags, selectedCollection]);
+  }, [posts, query, activeTags]);
 
   const toggleTag = (name) =>
     setActiveTags((prev) =>
@@ -248,10 +199,9 @@ export function Library({ accountButton }) {
   const clearFilters = () => {
     setQuery("");
     setActiveTags([]);
-    setSelectedCollection(null);
   };
 
-  const filtering = query.trim() !== "" || activeTags.length > 0 || selectedCollection !== null;
+  const filtering = query.trim() !== "" || activeTags.length > 0;
   const toReview = filtered.filter((p) => p.status === "review");
   const filed = filtered.filter((p) => p.status === "filed");
   const exportLabel = filtering ? "Export filtered CSV" : "Export CSV";
@@ -300,17 +250,6 @@ export function Library({ accountButton }) {
       </header>
 
       <main className="app-body">
-        <aside className="sidebar-col">
-          <CollectionSidebar
-            collections={collections}
-            selectedCollection={selectedCollection}
-            onSelectCollection={setSelectedCollection}
-            onCreateCollection={onCollectionCreated}
-            onEditCollection={onCollectionEdited}
-            onDeleteCollection={onCollectionDeleted}
-          />
-        </aside>
-
         <div className="content-col">
           <AddForm onSaved={onSaved} />
 
@@ -346,13 +285,22 @@ export function Library({ accountButton }) {
           )}
 
           {!loading && !error && !sessionExpired && posts.length === 0 && (
-            <div className="state">
+            <section className="empty-onboarding">
               <span className="state-icon"><InboxIcon /></span>
+              <h2>Save your first useful post</h2>
               <p>
-                No saved posts yet. Paste one above, or save a post on LinkedIn
-                with the browser extension connected.
+                Install the extension, then use LinkedIn's normal Save action.
+                The post will appear here automatically.
               </p>
-            </div>
+              <a
+                className="btn-primary"
+                href={import.meta.env.VITE_CHROME_STORE_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Install Chrome extension
+              </a>
+            </section>
           )}
 
           {!loading && !error && !sessionExpired && posts.length > 0 && filtered.length === 0 && (
@@ -375,8 +323,6 @@ export function Library({ accountButton }) {
                   onDeleted={requestDelete}
                   onTagClick={toggleTag}
                   activeTags={activeTags}
-                  collections={collections}
-                  onCollectionChange={onCollectionChange}
                 />
               ))}
             </section>
@@ -393,8 +339,6 @@ export function Library({ accountButton }) {
                   onDeleted={requestDelete}
                   onTagClick={toggleTag}
                   activeTags={activeTags}
-                  collections={collections}
-                  onCollectionChange={onCollectionChange}
                 />
               ))}
             </section>

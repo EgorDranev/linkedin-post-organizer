@@ -63,7 +63,7 @@ describe("account shell", () => {
     render(<App />);
 
     expect(screen.getByText("User account")).toBeInTheDocument();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     for (const [, init] of fetchMock.mock.calls) {
       expect(init.headers.get("Authorization")).toBe("Bearer session-token");
     }

@@ -169,17 +169,16 @@ body {
   white-space: nowrap;
 }
 
-/* main two-column body */
+/* main single-column body */
 .app-body {
   max-width: var(--app-max);
   margin: 0 auto;
   padding: var(--space-5);
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
   align-items: start;
 }
-.sidebar-col { position: sticky; top: calc(var(--header-h) + var(--space-5)); }
 .content-col { min-width: 0; }
 
 /* =====================================================================
@@ -327,10 +326,6 @@ input[type="search"],
 input[type="url"],
 .add-form textarea,
 .add-form input,
-.collection-create-form input,
-.collection-create-form textarea,
-.collection-edit-form input,
-.collection-edit-form textarea,
 .login-card input {
   width: 100%;
   border: 1px solid var(--line-strong);
@@ -389,6 +384,24 @@ textarea:focus {
 }
 .state p { margin: 0; max-width: 38ch; line-height: 1.55; }
 .state .error { justify-content: center; }
+
+/* empty-library onboarding: prompts installing the extension */
+.empty-onboarding {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+  padding: var(--space-7) var(--space-5);
+  color: var(--muted);
+}
+.empty-onboarding h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  color: var(--ink);
+}
+.empty-onboarding p { margin: 0; max-width: 42ch; line-height: 1.55; }
+.empty-onboarding .btn-primary { margin-top: var(--space-2); }
 
 .section { margin-top: var(--space-6); }
 .section:first-of-type { margin-top: var(--space-5); }
@@ -503,118 +516,6 @@ textarea:focus {
 }
 .filter-chip:hover .filter-count { background: #fff; }
 .filter-chip.active .filter-count { background: rgba(255, 255, 255, 0.22); color: #fff; }
-
-/* =====================================================================
-   Collections sidebar
-   ===================================================================== */
-
-.collection-sidebar {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-sm);
-  padding: var(--space-4);
-}
-.collection-controls { margin-bottom: var(--space-3); }
-.collection-controls h3 {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 0 var(--space-3);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-.collection-new-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  height: var(--control-h-sm);
-  padding: 0 var(--space-3);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--accent);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.collection-new-btn:hover { background: var(--accent-softer); border-color: var(--accent-border); }
-
-.collection-create-form,
-.collection-edit-form {
-  margin-top: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-}
-.collection-create-form input,
-.collection-create-form textarea,
-.collection-edit-form input,
-.collection-edit-form textarea { margin-bottom: var(--space-2); }
-.collection-create-form textarea,
-.collection-edit-form textarea { resize: vertical; min-height: 52px; }
-.form-buttons { display: flex; gap: var(--space-2); justify-content: flex-end; }
-.form-buttons .btn-primary,
-.form-buttons .btn-secondary { height: var(--control-h-sm); padding: 0 var(--space-3); }
-
-.collection-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
-.collection-item-wrapper { display: flex; align-items: center; gap: 2px; }
-.collection-item {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  text-align: left;
-  background: none;
-  border: none;
-  padding: 8px 10px;
-  cursor: pointer;
-  border-radius: var(--r-sm);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  color: var(--ink-2);
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.collection-item:hover { background: var(--surface-2); color: var(--ink); }
-.collection-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.collection-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.collection-count {
-  flex: 0 0 auto;
-  color: var(--muted-2);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-.collection-item.active .collection-count { color: var(--accent); }
-
-.collection-actions { display: flex; gap: 0; opacity: 0; transition: opacity 0.12s ease; }
-.collection-item-wrapper:hover .collection-actions,
-.collection-actions:focus-within { opacity: 1; }
-.action-btn {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  border-radius: var(--r-xs);
-  color: var(--muted);
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.action-btn:hover { background: var(--surface-2); }
-.edit-btn:hover { color: var(--accent); }
-.delete-btn:hover { color: var(--danger); background: var(--danger-soft); }
 
 /* =====================================================================
    Post card
@@ -1097,62 +998,6 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 }
 .toast-btn:hover { background: rgba(255, 255, 255, 0.14); }
 
-/* collection dropdown trigger (lives in the tag row) */
-.collection-dropdown-container { position: relative; display: inline-flex; }
-.collection-dropdown-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-full);
-  color: var(--muted);
-  background: var(--surface);
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-}
-.collection-dropdown-btn:hover { border-color: var(--accent-border); color: var(--accent); background: var(--accent-softer); }
-.collection-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 20;
-  min-width: 210px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  animation: pop-in 0.16s var(--ease-out) both;
-}
-@keyframes pop-in {
-  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-.collection-dropdown-content { padding: var(--space-2); max-height: 240px; overflow-y: auto; }
-.collection-dropdown-content::before {
-  content: "Add to collection";
-  display: block;
-  padding: 4px 8px 6px;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted-2);
-}
-.collection-option { border-radius: var(--r-xs); }
-.collection-option:hover { background: var(--surface-2); }
-.collection-option label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  cursor: pointer;
-  font-size: var(--fs-sm);
-  color: var(--ink);
-  padding: 7px 8px;
-}
-.collection-option input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
-
 /* =====================================================================
    Reader modal
    ===================================================================== */
@@ -1449,7 +1294,6 @@ button.danger:hover { background: var(--danger-hover); }
 
 @media (max-width: 860px) {
   .app-body { grid-template-columns: 1fr; gap: var(--space-4); }
-  .sidebar-col { position: static; top: auto; }
 }
 
 @media (max-width: 560px) {
@@ -1463,7 +1307,6 @@ button.danger:hover { background: var(--danger-hover); }
   .reader-grid { grid-template-columns: 1fr; overflow: auto; }
   .reader-panel { overflow: visible; }
   .reader-panel + .reader-panel { border-left: none; border-top: 1px solid var(--line); }
-  .collection-actions { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
