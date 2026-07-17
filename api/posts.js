@@ -1,16 +1,13 @@
-import { 
-  ensureSchema, 
+import {
+  ensureSchema,
   hasDatabase,
-  sql, 
-  allTags, 
-  hydrate, 
+  sql,
+  allTags,
+  hydrate,
   getPost,
-  removePostFromAllCollections,
-  addPostToCollection,
-  getCollectionsForPost
 } from "./_lib/db.js";
 import { suggestTagsAI } from "./_lib/ai.js";
-import { requireAuth } from "./_lib/auth.js";
+import { requireUser } from "./_lib/auth.js";
 
 const previewPosts = [
   {
@@ -99,14 +96,18 @@ function cleanPostUrl(value, metadata) {
 }
 
 export default async function handler(req, res) {
-  if (!requireAuth(req, res)) return;
+  const actor = await requireUser(req, res);
+  if (!actor) return;
+  const { userId } = actor;
 
   if (req.method === "GET") {
     if (!hasDatabase) return res.status(200).json(previewPosts);
 
     await ensureSchema();
-    const rows = await sql`SELECT * FROM posts ORDER BY saved_at DESC, id DESC`;
-    const posts = await Promise.all(rows.map(hydrate));
+    const rows = await sql`
+      SELECT * FROM posts WHERE user_id = ${userId}
+      ORDER BY saved_at DESC, id DESC`;
+    const posts = await Promise.all(rows.map((row) => hydrate(userId, row)));
     return res.status(200).json(posts);
   }
 
@@ -127,20 +128,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "text is required" });
     }
 
-    const tags = await allTags();
+    const tags = await allTags(userId);
     const suggestions = JSON.stringify(
       await suggestTagsAI(text, { existingTags: tags, author })
     );
 
     const existing = postUrl
-      ? await sql`SELECT id FROM posts WHERE url = ${postUrl}`
+      ? await sql`SELECT id FROM posts WHERE user_id = ${userId} AND url = ${postUrl}`
       : [];
 
     let id;
-    if (existing.length) {
+    let duplicate = existing.length > 0;
+    if (duplicate) {
       id = existing[0].id;
       if (createOnly) {
-        const post = await getPost(id);
+        const post = await getPost(userId, id);
         return res.status(200).json({ ...post, duplicate: true, skipped: true });
       }
       await sql`
@@ -155,34 +157,33 @@ export default async function handler(req, res) {
             WHEN ${hasMedia} THEN ${JSON.stringify(media)}::jsonb
             ELSE media
           END
-        WHERE id = ${id}`;
+        WHERE user_id = ${userId} AND id = ${id}`;
     } else {
+      // A concurrent capture of the same URL can still slip past the SELECT
+      // above; the per-user unique index turns the loser into a duplicate
+      // response instead of an unhandled constraint violation.
       const rows = await sql`
         INSERT INTO posts (
-          url, author, author_headline, text, status, suggested, metadata, media
+          user_id, url, author, author_headline, text, status, suggested, metadata, media
         )
-        VALUES (${postUrl}, ${author ?? null}, ${authorHeadline ?? null},
+        VALUES (${userId}, ${postUrl}, ${author ?? null}, ${authorHeadline ?? null},
                 ${text}, 'review', ${suggestions}::jsonb,
                 ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(media)}::jsonb)
+        ON CONFLICT (user_id, url) WHERE url IS NOT NULL DO NOTHING
         RETURNING id`;
-      id = rows[0].id;
-    }
-
-    // Handle collection associations if provided
-    if (req.body.collections && Array.isArray(req.body.collections)) {
-      // Remove post from all collections first
-      await removePostFromAllCollections(id);
-      
-      // Add to specified collections
-      for (const collectionId of req.body.collections) {
-        await addPostToCollection(id, collectionId);
+      if (rows.length) {
+        id = rows[0].id;
+      } else {
+        const winner = await sql`SELECT id FROM posts WHERE user_id = ${userId} AND url = ${postUrl}`;
+        id = winner[0].id;
+        duplicate = true;
       }
     }
 
-    const post = await getPost(id);
-    return res.status(existing.length ? 200 : 201).json({
+    const post = await getPost(userId, id);
+    return res.status(duplicate ? 200 : 201).json({
       ...post,
-      duplicate: existing.length > 0,
+      duplicate,
     });
   }
 
