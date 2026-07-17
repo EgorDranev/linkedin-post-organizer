@@ -166,10 +166,12 @@ export async function createPairing(id, verifierHash, expiresAt) {
 
 export async function approvePairing(id, userId) {
   await ensureSchema();
+  // Approval is one-shot: a pairing that already belongs to an account can
+  // never be re-bound to a different one.
   const rows = await sql`
     UPDATE extension_pairings
     SET user_id = ${userId}, approved_at = now()
-    WHERE id = ${id} AND consumed_at IS NULL AND expires_at > now()
+    WHERE id = ${id} AND approved_at IS NULL AND consumed_at IS NULL AND expires_at > now()
     RETURNING id`;
   return rows.length > 0;
 }
@@ -178,19 +180,24 @@ export async function approvePairing(id, userId) {
 // exactly one caller, so a raced double-redeem can never mint two tokens.
 export async function redeemPairing(id, verifierHash, rawToken, tokenHash, tokenId) {
   await ensureSchema();
-  const consumed = await sql`
-    UPDATE extension_pairings
-    SET consumed_at = now()
-    WHERE id = ${id}
-      AND verifier_hash = ${verifierHash}
-      AND approved_at IS NOT NULL
-      AND consumed_at IS NULL
-      AND expires_at > now()
-    RETURNING user_id`;
-  if (consumed.length) {
-    await sql`
-      INSERT INTO extension_tokens (id, user_id, token_hash)
-      VALUES (${tokenId}, ${consumed[0].user_id}, ${tokenHash})`;
+  // Consume and mint in ONE statement: if the token insert cannot happen,
+  // the pairing is not consumed either, so a transient failure never bricks
+  // the pairing into a permanent 409.
+  const minted = await sql`
+    WITH consumed AS (
+      UPDATE extension_pairings
+      SET consumed_at = now()
+      WHERE id = ${id}
+        AND verifier_hash = ${verifierHash}
+        AND approved_at IS NOT NULL
+        AND consumed_at IS NULL
+        AND expires_at > now()
+      RETURNING user_id
+    )
+    INSERT INTO extension_tokens (id, user_id, token_hash)
+    SELECT ${tokenId}, user_id, ${tokenHash} FROM consumed
+    RETURNING id`;
+  if (minted.length) {
     return { token: rawToken, tokenId };
   }
 
