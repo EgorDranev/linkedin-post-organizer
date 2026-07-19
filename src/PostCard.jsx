@@ -19,6 +19,29 @@ const SAVED_LINK_RE = /^saved link\s*[•·]\s*/i;
 // "Name • <degree> <role>" line — dropped so the headline reads as the role.
 const DEGREE_RE = /^(?:1st|2nd|3rd|\d+(?:st|nd|rd|th))\b[\s•·,–-]*/i;
 
+// Ad/CTA button labels and media chrome LinkedIn folds into innerText as their
+// own lines ("Claim offer", "Write article"). Never post content.
+const CHROME_LINE_SRC =
+  "claim offer|write article|learn more|sign up|subscribe|register|apply(?: now)?|get started|download|view (?:image|profile|job|offer)|visit website|view sponsored content|see translation|follow|play";
+const CHROME_LINE_RE = new RegExp(`^(?:${CHROME_LINE_SRC})$`, "i");
+const CHROME_LINE_STRIP_RE = new RegExp(
+  `^[ \\t]*(?:${CHROME_LINE_SRC})[ \\t]*$`,
+  "gim"
+);
+
+// A suggested tag built entirely from chrome words was derived from captured
+// UI text ("view image", "image claim"), not the post. Filters junk that older
+// saves already persisted server-side.
+const CHROME_TAG_WORDS = new Set([
+  "view", "image", "images", "claim", "offer", "see", "show", "more",
+  "sponsored", "promoted", "follow", "play", "profile", "link", "post", "saved",
+]);
+
+function isChromeTag(tag) {
+  const words = String(tag || "").toLowerCase().split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.every((word) => CHROME_TAG_WORDS.has(word));
+}
+
 function hostFromUrl(url) {
   if (!url) return "";
   try {
@@ -128,7 +151,7 @@ function readableText(text) {
       .replace(/\r\n?/g, "\n")
       .replace(/[ \t]+/g, " ")
       .replace(/\bView image\b\s*/gi, "")
-      .replace(/^[ \t]*View Sponsored Content[ \t]*$/gim, "")
+      .replace(CHROME_LINE_STRIP_RE, "")
       .replace(/[ \t]+\n/g, "\n")
       .replace(/\n[ \t]+/g, "\n")
       .replace(/\n{3,}/g, "\n\n")
@@ -158,13 +181,68 @@ function classifyBlock(block, index) {
 function textBlocks(text) {
   const clean = readableText(text);
   // Author paragraphs (blank lines) when the capture preserved them; otherwise
-  // every line break becomes its own block, so single-newline captures get the
-  // same airy paragraph spacing instead of stacking into one cramped wall.
-  const parts = clean.includes("\n\n") ? clean.split(/\n{2,}/) : clean.split(/\n+/);
+  // each line becomes its own block. Line-split blocks are marked `tight` so
+  // short list-like captures render with line spacing, not paragraph spacing.
+  const hasParagraphs = clean.includes("\n\n");
+  const parts = hasParagraphs ? clean.split(/\n{2,}/) : clean.split(/\n+/);
   return parts
     .map((block) => block.trim())
     .filter(Boolean)
-    .map((value, index) => ({ text: value, kind: classifyBlock(value, index) }));
+    .map((value, index) => ({
+      text: value,
+      kind: classifyBlock(value, index),
+      tight: !hasParagraphs,
+    }));
+}
+
+// Feed cards are a scan surface — the reader modal owns the full text. Clamp
+// the card face to roughly this many rendered lines and hand off via
+// "Show more". Line estimate assumes the 68ch text column.
+const CARD_MAX_LINES = 7;
+const CHARS_PER_LINE = 80;
+
+function clampBlocks(blocks) {
+  const kept = [];
+  let lines = 0;
+  for (const block of blocks) {
+    const blockLines = Math.max(1, Math.ceil(block.text.length / CHARS_PER_LINE));
+    if (lines + blockLines <= CARD_MAX_LINES) {
+      kept.push(block);
+      lines += blockLines;
+      continue;
+    }
+    // Partially fit a long block only when a useful amount of it fits (or the
+    // card would otherwise be empty); cut on a word boundary.
+    const room = (CARD_MAX_LINES - lines) * CHARS_PER_LINE;
+    if (room >= 120 || kept.length === 0) {
+      const cut = block.text
+        .slice(0, Math.max(room, 120))
+        .replace(/\s+\S*$/, "");
+      kept.push({ ...block, text: `${cut}…` });
+    }
+    return { blocks: kept, truncated: true };
+  }
+  return { blocks: kept, truncated: false };
+}
+
+// A "source" block is a bare URL/domain — render it as a real link so the
+// accent styling matches the affordance.
+function hrefFromSource(text) {
+  const value = text.trim().replace(/…$/, "");
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function TextBlock({ block, className }) {
+  if (block.kind === "source") {
+    return (
+      <p className={className}>
+        <a href={hrefFromSource(block.text)} target="_blank" rel="noreferrer">
+          {block.text}
+        </a>
+      </p>
+    );
+  }
+  return <p className={className}>{block.text}</p>;
 }
 
 function previewTitle(blocks, media, post) {
@@ -210,7 +288,7 @@ function isNoiseLine(line) {
   if (!t) return false;
   if (/^…?\s*(?:see|show)\s+more$/i.test(t)) return true;
   if (/^activate to view larger image$/i.test(t)) return true;
-  if (/^play$/i.test(t)) return true;
+  if (CHROME_LINE_RE.test(t)) return true;
   if (t.length > 80 || !/\d/.test(t)) return false;
   // Counter line ("1,234 reactions · 56 comments · 7 reposts", "👍 1.2K"): once
   // counts (incl. K/M) and engagement nouns are stripped, only separators or
@@ -399,13 +477,24 @@ function TypeBadge({ meta, variant }) {
   );
 }
 
+// Stable tiny hash → one of six avatar tints, so photo-less monograms vary by
+// author instead of all sharing one gradient.
+function tintIndex(value) {
+  let hash = 0;
+  for (const ch of String(value || "")) hash = (hash * 31 + ch.charCodeAt(0)) % 997;
+  return hash % 6;
+}
+
 export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = [] }) {
   const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [avatarBroken, setAvatarBroken] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const displayText = useMemo(() => readableText(post.text), [post.text]);
   const displayBlocks = useMemo(() => textBlocks(displayText), [displayText]);
+  const cardText = useMemo(() => clampBlocks(displayBlocks), [displayBlocks]);
   const reader = useMemo(() => parseReaderPost(post), [post]);
   const media = Array.isArray(post.media) ? post.media : [];
   const links = metadataLinks(post);
@@ -442,14 +531,36 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const imageCount = media.filter(
     (item) => item.type === "image" && (item.url || item.thumbnailUrl)
   ).length;
+  // The media pill and the type badge can carry the same word ("Video");
+  // when they would, the pill wins and the badge is dropped.
+  const mediaPillLabel = primaryThumb
+    ? isVideo
+      ? "Video"
+      : imageCount > 1
+        ? `${imageCount} images`
+        : mediaLabel(primaryMedia)
+    : "";
+  const badgeMeta = typeMeta && typeMeta.label === mediaPillLabel ? null : typeMeta;
+
+  // suggested tags not already accepted; chrome-derived junk ("view image")
+  // from older saves is filtered out client-side too.
+  const pending = post.suggested.filter(
+    (s) => !post.tags.includes(s.tag) && !isChromeTag(s.tag)
+  );
+  const pendingSet = new Set(pending.map((s) => s.tag.toLowerCase()));
 
   // The post's own hashtags — recognition aid, distinct from the user's tags.
-  // One tap adopts a topic as a tag. Drop any already accepted.
+  // One tap adopts a topic as a tag. Drop any already accepted, and any that a
+  // pending suggestion already offers (the suggestion chip is the richer
+  // control: it can be adopted or dismissed).
   const topicTags = (
     Array.isArray(post.metadata?.hashtags) ? post.metadata.hashtags : []
   )
     .map((tag) => tag.replace(/^#/, "").trim())
-    .filter((tag) => tag && !post.tags.includes(tag))
+    .filter(
+      (tag) =>
+        tag && !post.tags.includes(tag) && !pendingSet.has(tag.toLowerCase())
+    )
     .slice(0, 6);
 
   // Engagement surfaced as compact stats (full detail lives in the reader).
@@ -460,6 +571,12 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const reposts = social.reposts;
   const publishedText = post.metadata?.publishedText || "";
 
+  // Sub-line under the author: role/company, plus a domain only when the save
+  // points off LinkedIn ("linkedin.com" on every card says nothing). With
+  // neither, fall back to when the post was published.
+  const externalSource = /^linkedin(?:\.com)?$/i.test(source) ? "" : source;
+  const publishedInline = !headline && !externalSource ? publishedText : "";
+
   useEffect(() => {
     if (!readerOpen) return undefined;
     const onKeyDown = (event) => {
@@ -468,9 +585,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [readerOpen]);
-
-  // suggested tags not already accepted
-  const pending = post.suggested.filter((s) => !post.tags.includes(s.tag));
 
   const persist = (tags, suggested) =>
     api.updatePost(post.id, { tags, suggested }).then(onUpdated);
@@ -534,7 +648,11 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
       <div className="card-content">
         <div className="card-id">
           <span
-            className={`card-avatar${showAvatar ? " card-avatar--photo" : ""}`}
+            className={`card-avatar${
+              showAvatar
+                ? " card-avatar--photo"
+                : ` card-avatar--tint${tintIndex(author || source)}`
+            }`}
             aria-hidden="true"
           >
             {showAvatar ? (
@@ -568,33 +686,52 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 </span>
               )}
             </div>
-            <span className="card-source">
-              {headline && <span className="card-headline">{headline}</span>}
-              {headline && <span className="meta-sep" aria-hidden="true">·</span>}
-              <span className="card-source-name">{source}</span>
-            </span>
+            {(headline || externalSource || publishedInline) && (
+              <span className="card-source">
+                {headline && <span className="card-headline">{headline}</span>}
+                {headline && externalSource && (
+                  <span className="meta-sep" aria-hidden="true">·</span>
+                )}
+                {externalSource && (
+                  <span className="card-source-name">{externalSource}</span>
+                )}
+                {publishedInline && (
+                  <span className="card-source-name">Posted {publishedInline}</span>
+                )}
+              </span>
+            )}
           </div>
           {renderActions()}
         </div>
 
         <div className="card-post-text">
-          {displayBlocks.length > 0 ? (
-            displayBlocks.map((block, index) => (
-              <p
+          {cardText.blocks.length > 0 ? (
+            cardText.blocks.map((block, index) => (
+              <TextBlock
                 key={`${block.text.slice(0, 32)}-${index}`}
-                className={`card-text-block card-text-block--${block.kind}`}
-              >
-                {block.text}
-              </p>
+                block={block}
+                className={`card-text-block card-text-block--${block.kind}${
+                  block.tight ? " card-text-block--tight" : ""
+                }`}
+              />
             ))
           ) : (
             <p className="card-text-empty">No text was captured for this post.</p>
           )}
+          {cardText.truncated && (
+            <button
+              className="card-show-more"
+              type="button"
+              onClick={() => setReaderOpen(true)}
+            >
+              Show more
+            </button>
+          )}
         </div>
 
-        {(typeMeta || primaryThumb) && (
+        {(badgeMeta || primaryThumb) && (
           <div className="card-attachments">
-            <TypeBadge meta={typeMeta} variant="inline" />
+            <TypeBadge meta={badgeMeta} variant="inline" />
             {primaryThumb && (
               <button
                 className="card-media-pill"
@@ -603,7 +740,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 title="View captured media"
               >
                 {isVideo ? <PlayIcon width={13} height={13} /> : <ImagesIcon width={13} height={13} />}
-                {isVideo ? "Video" : imageCount > 1 ? `${imageCount} images` : mediaLabel(primaryMedia)}
+                {mediaPillLabel}
               </button>
             )}
           </div>
@@ -628,7 +765,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               {reposts}
             </span>
           ) : null}
-          {publishedText ? (
+          {publishedText && !publishedInline ? (
             <span className="card-stat" title={`Published ${publishedText}`}>
               <ClockIcon width={14} height={14} />
               Published {publishedText}
@@ -678,35 +815,67 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
             </span>
           ))}
 
-          {pending.length > 0 && <span className="tags-hint">Suggested</span>}
-          {pending.map((s) => (
-            <span key={s.tag} className="chip suggested">
-              <button
-                className="chip-add"
-                onClick={() => acceptTag(s.tag)}
-                title="Add this tag"
-                aria-label={`Add suggested tag ${s.tag}`}
-              >
-                + {s.tag}
-              </button>
-              <button
-                className="chip-x"
-                onClick={() => dismissSuggestion(s.tag)}
-                title="Dismiss suggestion"
-                aria-label={`Dismiss suggested tag ${s.tag}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
+          {pending.length > 0 && !suggestionsOpen && (
+            <button
+              className="chip-toggle"
+              type="button"
+              onClick={() => setSuggestionsOpen(true)}
+              title="Show suggested tags"
+            >
+              +{pending.length} suggested
+            </button>
+          )}
+          {suggestionsOpen &&
+            pending.map((s) => (
+              <span key={s.tag} className="chip suggested">
+                <button
+                  className="chip-add"
+                  onClick={() => acceptTag(s.tag)}
+                  title="Add this tag"
+                  aria-label={`Add suggested tag ${s.tag}`}
+                >
+                  + {s.tag}
+                </button>
+                <button
+                  className="chip-x"
+                  onClick={() => dismissSuggestion(s.tag)}
+                  title="Dismiss suggestion"
+                  aria-label={`Dismiss suggested tag ${s.tag}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
 
-          <form className="chip-form" onSubmit={addCustom}>
-            <input
-              placeholder="add tag…"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-          </form>
+          {addOpen ? (
+            <form className="chip-form" onSubmit={addCustom}>
+              <input
+                autoFocus
+                placeholder="add tag…"
+                aria-label="Add a tag"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={() => {
+                  if (!draft.trim()) setAddOpen(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setDraft("");
+                    setAddOpen(false);
+                  }
+                }}
+              />
+            </form>
+          ) : (
+            <button
+              className="chip-ghost"
+              type="button"
+              onClick={() => setAddOpen(true)}
+              title="Add a tag"
+            >
+              + tag
+            </button>
+          )}
         </div>
       </div>
 
@@ -786,12 +955,11 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 <div className="reader-text">
                   {reader.blocks.length > 0 ? (
                     reader.blocks.map((block, index) => (
-                      <p
+                      <TextBlock
                         key={`${block.text.slice(0, 32)}-${index}`}
+                        block={block}
                         className={`text-block text-block--${block.kind}`}
-                      >
-                        {block.text}
-                      </p>
+                      />
                     ))
                   ) : (
                     <p className="reader-empty">

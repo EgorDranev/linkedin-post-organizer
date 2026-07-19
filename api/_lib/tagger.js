@@ -23,6 +23,19 @@ const DOMAIN_WORDS = new Set(
   )
 );
 
+// LinkedIn chrome captured alongside the post body: ad CTA labels and media
+// affordances ("View image", "Claim offer"). Stripped before analysis so they
+// can't seed suggestions like "view image" / "image claim".
+const CHROME_PHRASES_RE =
+  /\b(?:view image|view profile|view sponsored content|claim offer|write article|learn more|sign ?up|see more|show more|visit website|see translation|activate to view larger image)\b/gi;
+
+// Backstop: a candidate whose every word is chrome vocabulary is never a topic.
+const CHROME_WORDS = new Set(
+  "view image images claim offer see show more sponsored promoted follow play profile link saved".split(
+    /\s+/
+  )
+);
+
 function stripUrls(text) {
   return text
     .replace(/https?:\/\/\S+/gi, " ")
@@ -102,7 +115,7 @@ function capitalizedWords(rawText) {
 export function suggestTags(text, existingTags = []) {
   const options =
     Array.isArray(existingTags) ? { existingTags } : existingTags && typeof existingTags === "object" ? existingTags : {};
-  const raw = text || "";
+  const raw = (text || "").replace(CHROME_PHRASES_RE, " ");
   const tokens = tokenize(raw);
   const tokenSet = new Set(tokens);
   const capWords = capitalizedWords(raw);
@@ -203,6 +216,7 @@ function isNoisyTag(tag, authorWordSet) {
   const words = tag.split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   if (words.every((word) => DOMAIN_WORDS.has(word))) return true;
+  if (words.every((word) => CHROME_WORDS.has(word))) return true;
   if (words.every((word) => authorWordSet.has(word))) return true;
   if (words.length === 2 && words.some((word) => DOMAIN_WORDS.has(word))) return true;
 
