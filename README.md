@@ -6,18 +6,27 @@ account with suggested tags, so you can actually re-find it weeks later.
 
 **Status: hosted private beta.** The app runs at
 [linkedin-saver.vercel.app](https://linkedin-saver.vercel.app); sign-ups are
-invite-only, and the Chrome extension ships through an unlisted Chrome Web
-Store link shared with invitees. The repository is public and MIT-licensed —
-see [Case study](CASE_STUDY.md) for the product story.
+invite-only, and the Chrome extension ships as a zip on
+[GitHub Releases](https://github.com/EgorDranev/linkedin-post-organizer/releases/latest),
+installed via Chrome's **Load unpacked**. The repository is public and
+MIT-licensed — see [Case study](CASE_STUDY.md) for the product story.
 
 ## Using the beta (invited users)
 
-No Vercel account, database, API key, or Chrome developer mode required:
+No Vercel account, database, or API key required:
 
 1. **Sign in with your email.** Enter your invited email address on the site
    and click the magic sign-in link you receive (passwordless, via Clerk).
-2. **Install the extension** from the unlisted Chrome Web Store link in your
-   empty library / invite.
+2. **Install the extension.** Download `linkedin-saver-extension.zip` from the
+   [latest release](https://github.com/EgorDranev/linkedin-post-organizer/releases/latest)
+   and unzip it into a folder you'll keep (Chrome loads the extension from
+   that folder from then on). Open `chrome://extensions`, switch on
+   **Developer mode** (top right), click **Load unpacked**, and select the
+   unzipped folder. Chrome may show a "developer mode extensions" reminder on
+   startup — that's expected for extensions installed outside the Web Store.
+   To update later, unzip the new release into the same folder (replacing the
+   files) and click the reload icon on `chrome://extensions` — using the same
+   folder keeps the extension paired with your account.
 3. **Connect once.** The extension popup explains what is captured and, after
    your consent, pairs itself with your account using a revocable, capture-only
    credential. No LinkedIn password or session is ever stored.
@@ -43,8 +52,9 @@ permanently delete your account in Settings. Full details:
 Save a post on LinkedIn → it appears in your library with suggested tags →
 search or filter to re-find it.
 
-<!-- TODO: add capture → library → search screenshots/GIF before the Store
-submission (see docs/chrome-web-store-checklist.md). -->
+<!-- TODO: add capture → library → search screenshots/GIF
+(also needed if the extension is ever submitted to the Chrome Web Store —
+see docs/chrome-web-store-checklist.md). -->
 
 ## Architecture
 
@@ -114,10 +124,12 @@ The migration is idempotent — running it twice changes nothing the second time
    there before loading or packaging.
 3. `npm run ext:watch` auto-reloads the unpacked extension (and open LinkedIn
    tabs) whenever a file under `extension/` changes.
-4. `npm run extension:package` builds `linkedin-saver-extension.zip` for the
-   Chrome Web Store (dev-only files excluded). Don't commit the ZIP. The
-   submission steps live in
-   [docs/chrome-web-store-checklist.md](docs/chrome-web-store-checklist.md).
+4. `npm run extension:package` builds `linkedin-saver-extension.zip`
+   (dev-only files excluded) — this is the zip attached to
+   [GitHub Releases](https://github.com/EgorDranev/linkedin-post-organizer/releases)
+   for beta users. Don't commit the ZIP. (A Chrome Web Store submission
+   remains a possible later path; the checklist is kept in
+   [docs/chrome-web-store-checklist.md](docs/chrome-web-store-checklist.md).)
 
 > The content script reads LinkedIn's DOM, whose class names change often. If
 > capture stops working, inspect the native **Save** button on a feed post and
