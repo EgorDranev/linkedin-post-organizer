@@ -619,8 +619,8 @@ textarea:focus {
 .card-id { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
 .card-avatar {
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border-radius: var(--r-full);
@@ -702,10 +702,13 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   line-height: 1.25;
 }
 .card-source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.meta-sep { opacity: 0.5; }
+/* published timestamp rides the end of the meta line and never truncates —
+   the headline is the flexible (ellipsized) segment */
+.card-source-time { flex: 0 0 auto; white-space: nowrap; }
+.meta-sep { flex: 0 0 auto; opacity: 0.5; }
 
 .card-post-text {
-  margin-top: var(--space-5);
+  margin-top: var(--space-4);
   max-width: 68ch; /* readable measure — never the full 1040px column */
   color: var(--ink);
   font-size: 15px;
@@ -717,7 +720,9 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   margin: 0 0 var(--space-5);
   white-space: pre-wrap;
 }
-.card-text-block:last-child { margin-bottom: 0; }
+/* last-of-type, not last-child — the "…see more" button can follow the last
+   paragraph, and the text should still hug it */
+.card-text-block:last-of-type { margin-bottom: 0; }
 .card-text-block--title {
   font-size: 16px;
   line-height: 1.45;
@@ -860,6 +865,64 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   border: 1px solid rgba(255, 255, 255, 0.18);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
+}
+
+/* media embed — LinkedIn-style full-width attachment below the text.
+   Nested radius stays smaller than the card's (r-sm < r-md). */
+.card-media {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-4);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.card-media:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
+.card-media-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--surface-3);
+}
+.card-media-frame img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.card-media:hover .media-affordance--play { transform: translate(-50%, -50%) scale(1.05); }
+.card-media .media-affordance--play { transition: transform 0.15s var(--ease-out); }
+/* caption bar under the frame — media title + source host */
+.card-media-caption {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+.card-media-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.card-media-host {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--fs-xs);
 }
 
 .card-attachments {
