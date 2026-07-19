@@ -197,23 +197,25 @@ function textBlocks(text) {
 
 // Feed cards are a scan surface — the reader modal owns the full text. Clamp
 // the card face to roughly this many rendered lines and hand off via
-// "Show more". Line estimate assumes the 68ch text column.
+// "…see more". Cards with a media embed clamp tighter (the embed carries the
+// story, LinkedIn-style). Line estimate assumes the 68ch text column.
 const CARD_MAX_LINES = 7;
+const MEDIA_CARD_MAX_LINES = 4;
 const CHARS_PER_LINE = 80;
 
-function clampBlocks(blocks) {
+function clampBlocks(blocks, maxLines = CARD_MAX_LINES) {
   const kept = [];
   let lines = 0;
   for (const block of blocks) {
     const blockLines = Math.max(1, Math.ceil(block.text.length / CHARS_PER_LINE));
-    if (lines + blockLines <= CARD_MAX_LINES) {
+    if (lines + blockLines <= maxLines) {
       kept.push(block);
       lines += blockLines;
       continue;
     }
     // Partially fit a long block only when a useful amount of it fits (or the
     // card would otherwise be empty); cut on a word boundary.
-    const room = (CARD_MAX_LINES - lines) * CHARS_PER_LINE;
+    const room = (maxLines - lines) * CHARS_PER_LINE;
     if (room >= 120 || kept.length === 0) {
       const cut = block.text
         .slice(0, Math.max(room, 120))
@@ -420,13 +422,6 @@ const RepostIcon = (props) => (
   </svg>
 );
 
-const ClockIcon = (props) => (
-  <svg width="16" height="16" {...ICON_BASE} {...props}>
-    <circle cx="12" cy="12" r="10" />
-    <path d="M12 6v6l4 2" />
-  </svg>
-);
-
 // Filled triangle reads as "play" at small sizes; the others share ICON_BASE.
 const PlayIcon = (props) => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
@@ -489,12 +484,12 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const [readerOpen, setReaderOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [avatarBroken, setAvatarBroken] = useState(false);
+  const [thumbBroken, setThumbBroken] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
 
   const displayText = useMemo(() => readableText(post.text), [post.text]);
   const displayBlocks = useMemo(() => textBlocks(displayText), [displayText]);
-  const cardText = useMemo(() => clampBlocks(displayBlocks), [displayBlocks]);
   const reader = useMemo(() => parseReaderPost(post), [post]);
   const media = Array.isArray(post.media) ? post.media : [];
   const links = metadataLinks(post);
@@ -542,6 +537,24 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     : "";
   const badgeMeta = typeMeta && typeMeta.label === mediaPillLabel ? null : typeMeta;
 
+  // Media embed, LinkedIn-style: full-width thumbnail with a play/count
+  // affordance and a caption bar. Falls back to the compact pill when the
+  // CDN thumbnail has expired (onError).
+  const showMediaHero = Boolean(primaryThumb) && !thumbBroken;
+  // Photos and videos speak for themselves in the frame; overlay-label only
+  // the types that don't (document, article, repost…).
+  const heroBadge = isVideo || postType === "image" ? null : badgeMeta;
+  const mediaTitle = primaryMedia?.title || "";
+  const mediaHost = hostFromUrl(primaryMedia?.url) || "";
+  const cardText = useMemo(
+    () =>
+      clampBlocks(
+        displayBlocks,
+        showMediaHero ? MEDIA_CARD_MAX_LINES : CARD_MAX_LINES
+      ),
+    [displayBlocks, showMediaHero]
+  );
+
   // suggested tags not already accepted; chrome-derived junk ("view image")
   // from older saves is filtered out client-side too.
   const pending = post.suggested.filter(
@@ -571,11 +584,10 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const reposts = social.reposts;
   const publishedText = post.metadata?.publishedText || "";
 
-  // Sub-line under the author: role/company, plus a domain only when the save
-  // points off LinkedIn ("linkedin.com" on every card says nothing). With
-  // neither, fall back to when the post was published.
+  // Sub-line under the author: role/company, a domain only when the save
+  // points off LinkedIn ("linkedin.com" on every card says nothing), and when
+  // the post was published — LinkedIn puts the timestamp on this line too.
   const externalSource = /^linkedin(?:\.com)?$/i.test(source) ? "" : source;
-  const publishedInline = !headline && !externalSource ? publishedText : "";
 
   useEffect(() => {
     if (!readerOpen) return undefined;
@@ -686,7 +698,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 </span>
               )}
             </div>
-            {(headline || externalSource || publishedInline) && (
+            {(headline || externalSource || publishedText) && (
               <span className="card-source">
                 {headline && <span className="card-headline">{headline}</span>}
                 {headline && externalSource && (
@@ -695,8 +707,16 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 {externalSource && (
                   <span className="card-source-name">{externalSource}</span>
                 )}
-                {publishedInline && (
-                  <span className="card-source-name">Posted {publishedInline}</span>
+                {(headline || externalSource) && publishedText && (
+                  <span className="meta-sep" aria-hidden="true">·</span>
+                )}
+                {publishedText && (
+                  <span
+                    className="card-source-time"
+                    title={`Published ${publishedText}`}
+                  >
+                    {publishedText}
+                  </span>
                 )}
               </span>
             )}
@@ -724,12 +744,53 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               type="button"
               onClick={() => setReaderOpen(true)}
             >
-              Show more
+              …see more
             </button>
           )}
         </div>
 
-        {(badgeMeta || primaryThumb) && (
+        {showMediaHero ? (
+          <button
+            className="card-media"
+            type="button"
+            onClick={() => setReaderOpen(true)}
+            title="View captured media"
+            aria-label={
+              isVideo ? "View captured video" : "View captured media"
+            }
+          >
+            <span className="card-media-frame">
+              <img
+                src={primaryThumb}
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={() => setThumbBroken(true)}
+              />
+              {isVideo ? (
+                <span className="media-affordance media-affordance--play">
+                  <PlayIcon width={22} height={22} />
+                </span>
+              ) : imageCount > 1 ? (
+                <span className="media-affordance media-affordance--count">
+                  <ImagesIcon width={13} height={13} />
+                  {imageCount} images
+                </span>
+              ) : null}
+              <TypeBadge meta={heroBadge} variant="overlay" />
+            </span>
+            {(mediaTitle || mediaHost) && (
+              <span className="card-media-caption">
+                {mediaTitle && (
+                  <span className="card-media-title">{mediaTitle}</span>
+                )}
+                {mediaHost && (
+                  <span className="card-media-host">{mediaHost}</span>
+                )}
+              </span>
+            )}
+          </button>
+        ) : (badgeMeta || primaryThumb) ? (
           <div className="card-attachments">
             <TypeBadge meta={badgeMeta} variant="inline" />
             {primaryThumb && (
@@ -744,7 +805,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
               </button>
             )}
           </div>
-        )}
+        ) : null}
 
         <div className="card-stats">
           {reactions ? (
@@ -763,12 +824,6 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
             <span className="card-stat" title={`${reposts} reposts`}>
               <RepostIcon width={14} height={14} />
               {reposts}
-            </span>
-          ) : null}
-          {publishedText && !publishedInline ? (
-            <span className="card-stat" title={`Published ${publishedText}`}>
-              <ClockIcon width={14} height={14} />
-              Published {publishedText}
             </span>
           ) : null}
           <span className="card-stat card-stat--saved" title={`Saved ${savedDate}`}>
