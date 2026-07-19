@@ -46,6 +46,25 @@ describe("authenticateRequest", () => {
     expect(actor).toEqual({ userId: "user_a", kind: "web" });
   });
 
+  it("authorizes the deployment's own Vercel origins alongside APP_ORIGIN", async () => {
+    process.env.VERCEL_URL = "linkedin-saver-abc123-team.vercel.app";
+    process.env.VERCEL_BRANCH_URL = "linkedin-saver-git-main-team.vercel.app";
+    verifyToken.mockResolvedValue({ sub: "user_a" });
+    await authenticateRequest({
+      headers: { authorization: "Bearer clerk_session" },
+    });
+    expect(verifyToken).toHaveBeenCalledWith("clerk_session", {
+      secretKey: "sk_test",
+      authorizedParties: [
+        "https://linkedin-saver.vercel.app",
+        "https://linkedin-saver-abc123-team.vercel.app",
+        "https://linkedin-saver-git-main-team.vercel.app",
+      ],
+    });
+    delete process.env.VERCEL_URL;
+    delete process.env.VERCEL_BRANCH_URL;
+  });
+
   it("fails closed when APP_ORIGIN is not configured", async () => {
     delete process.env.APP_ORIGIN;
     verifyToken.mockResolvedValue({ sub: "user_a" });
