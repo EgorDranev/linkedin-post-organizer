@@ -352,6 +352,71 @@
     return Boolean(el?.closest?.(COMMENT_SCOPE));
   }
 
+  // Self-referencing chrome that renders the VIEWER's name/avatar near or
+  // inside post containers: global nav, the "start a post" share box, the feed
+  // identity rail, messaging bubbles. Never a source of post authorship.
+  const VIEWER_CHROME = [
+    "header",
+    "nav",
+    "[role='banner']",
+    "[role='navigation']",
+    ".global-nav",
+    ".share-box-feed-entry",
+    ".feed-identity-module",
+    ".msg-overlay-list-bubble",
+    ".msg-overlay-bubble-header",
+  ].join(", ");
+
+  function inViewerChrome(el) {
+    return Boolean(el?.closest?.(VIEWER_CHROME));
+  }
+
+  function profileSlug(href) {
+    return (
+      String(href || "")
+        .match(/\/in\/([^/?#]+)/i)?.[1]
+        ?.toLowerCase() || ""
+    );
+  }
+
+  function normalizedName(value) {
+    return cleanLinkedInText(value).toLowerCase();
+  }
+
+  // Comment-scope exclusion is structural and misses surfaces where LinkedIn
+  // drops the markers — e.g. the collapsed "Add a comment…" prompt on the
+  // image viewer has no form/comments-* wrapper on class-obfuscated builds,
+  // and its avatar link then reads as "the post author is the viewer". So
+  // also learn who the viewer IS (global nav photo / identity rail) and let
+  // extraction refuse to credit them from any fallback path. Uncached: the
+  // nav is two cheap queries and extraction runs once per save.
+  function getViewerIdentity() {
+    const photo = document.querySelector(
+      "img.global-nav__me-photo, .global-nav__me img, .feed-identity-module img"
+    );
+    const link = document.querySelector(
+      ".feed-identity-module a[href*='/in/'], .global-nav__me a[href*='/in/']"
+    );
+    return {
+      name: normalizedName(nameFromAvatarAlt(attr(photo, "alt"))),
+      slug: profileSlug(attr(link, "href")),
+    };
+  }
+
+  function isViewerLink(link, img) {
+    if (!link && !img) return false;
+    const viewer = getViewerIdentity();
+    if (viewer.slug && profileSlug(attr(link, "href")) === viewer.slug) {
+      return true;
+    }
+    if (!viewer.name) return false;
+    return [
+      nameFromAvatarAlt(attr(img, "alt")),
+      cleanAuthor(attr(link, "aria-label")),
+      link ? cleanAuthor(link) : "",
+    ].some((name) => name && normalizedName(name) === viewer.name);
+  }
+
   function isVisibleElement(el) {
     const r = el?.getBoundingClientRect?.();
     return !r || (r.width > 0 && r.height > 0);
@@ -407,18 +472,32 @@
     // reactors ("X loves this") sit above it but render small (≈24px), so the
     // first sizable avatar in DOM order is the author. Commenter/composer
     // avatars are just as large but come later — and the composer would match
-    // the VIEWER's own profile — so comment scopes are skipped outright.
+    // the VIEWER's own profile — so comment scopes are skipped outright, and
+    // any link resolving to the viewer only survives as a flagged last resort
+    // (their own post's header vs. unmarked composer chrome is undecidable).
     let best = { link: null, img: null, size: -1 };
+    let viewerBest = { link: null, img: null, size: -1, isViewer: true };
     for (const link of links) {
-      if (inCommentScope(link)) continue;
+      if (inCommentScope(link) || inViewerChrome(link)) continue;
       const img = link.querySelector("img");
       if (!img) continue;
       const r = img.getBoundingClientRect?.();
       const size = r ? Math.min(r.width, r.height) : 0;
+      // Inside the named actor block the link IS the post header — trust it
+      // even when it resolves to the viewer (their own post).
+      const inActorBlock = link.closest(
+        ".update-components-actor, .feed-shared-actor"
+      );
+      if (!inActorBlock && isViewerLink(link, img)) {
+        if (size > viewerBest.size) {
+          viewerBest = { link, img, size, isViewer: true };
+        }
+        continue;
+      }
       if (size >= 32) return { link, img, size };
       if (size > best.size) best = { link, img, size };
     }
-    return best;
+    return best.link ? best : viewerBest;
   }
 
   function nameFromAvatarAlt(alt) {
@@ -434,29 +513,43 @@
   }
 
   function extractAvatar(scope) {
-    const selectors = [
+    // The actor-block selectors are trusted: on the viewer's own posts they
+    // legitimately resolve to the viewer's photo. The generic classes below
+    // them also style the viewer's avatar in composer prompts, so the viewer
+    // is rejected there.
+    const actorSelectors = [
       ".update-components-actor__avatar img",
       ".update-components-actor__avatar-image",
       ".feed-shared-actor__avatar img",
       ".feed-shared-actor__avatar-image",
+    ];
+    const genericSelectors = [
       ".presence-entity__image",
       ".entity-result__universal-image img",
       ".entity-result__image img",
       ".ivm-view-attr__img--centered",
       "img[class*='EntityPhoto']",
     ];
-    for (const selector of selectors) {
-      for (const img of scope?.querySelectorAll?.(selector) || []) {
-        // Presence/entity image classes also appear on commenter avatars —
-        // only the post header's avatar counts.
-        if (inCommentScope(img)) continue;
-        const url = imageUrl(img);
-        // Skip lazy-load ghosts (data: placeholders) — only real CDN photos.
-        if (url && /^https?:/i.test(url)) return url;
+    for (const [selectors, trusted] of [
+      [actorSelectors, true],
+      [genericSelectors, false],
+    ]) {
+      for (const selector of selectors) {
+        for (const img of scope?.querySelectorAll?.(selector) || []) {
+          // Presence/entity image classes also appear on commenter avatars —
+          // only the post header's avatar counts.
+          if (inCommentScope(img) || inViewerChrome(img)) continue;
+          if (!trusted && isViewerLink(img.closest("a"), img)) continue;
+          const url = imageUrl(img);
+          // Skip lazy-load ghosts (data: placeholders) — only real CDN photos.
+          if (url && /^https?:/i.test(url)) return url;
+        }
       }
     }
     // Class-obfuscated builds: the avatar lives inside the actor header link.
-    const url = imageUrl(actorLinkIn(scope).img);
+    const actor = actorLinkIn(scope);
+    if (actor.isViewer) return "";
+    const url = imageUrl(actor.img);
     return url && /^https?:/i.test(url) ? url : "";
   }
 
@@ -595,13 +688,30 @@
       if (author) return author;
     }
 
-    // Class-obfuscated builds: read the name off the actor header link — its
-    // avatar alt ("View <Name>’s profile") or aria-label.
-    const { link, img } = actorLinkIn(postEl);
-    const fromAlt = nameFromAvatarAlt(attr(img, "alt"));
-    if (fromAlt) return fromAlt;
-    const fromAria = cleanAuthor(attr(link, "aria-label"));
-    if (fromAria) return fromAria;
+    // Class-obfuscated builds: read the name off the post's first profile
+    // link — avatar alt ("View <Name>’s profile"), aria-label, or the link's
+    // own text (the header name is a link even when the avatar is rendered as
+    // a background div with no <img> to anchor on). Small-avatar links are
+    // social-proof reactor chips, not the author. The viewer is never
+    // accepted here: a headerless build can't tell their own post's header
+    // from an unmarked comment prompt, and crediting every save to the viewer
+    // is worse than leaving the author blank.
+    for (const link of postEl?.querySelectorAll?.(
+      "a[href*='/in/'], a[href*='/company/']"
+    ) || []) {
+      if (inCommentScope(link) || inViewerChrome(link)) continue;
+      const img = link.querySelector("img");
+      if (img) {
+        const r = img.getBoundingClientRect?.();
+        if (r && Math.min(r.width, r.height) < 32) continue;
+      }
+      if (isViewerLink(link, img)) continue;
+      const author =
+        nameFromAvatarAlt(attr(img, "alt")) ||
+        cleanAuthor(attr(link, "aria-label")) ||
+        cleanAuthor(link);
+      if (author && !isChromeText(author)) return author;
+    }
 
     return "";
   }
@@ -1215,19 +1325,52 @@
   }
 
   function extractSavedAuthor(card) {
-    const selectors = [
+    // Named title/actor classes are trusted (a saved card headed by the
+    // viewer means it IS the viewer's post). The bare profile-link fallbacks
+    // are not — they'd read the viewer off composer/chrome leftovers.
+    for (const selector of [
       ".entity-result__title-text",
       ".entity-result__title",
       ".update-components-actor__title",
       ".feed-shared-actor__title",
+    ]) {
+      const author = cleanAuthor(card.querySelector(selector));
+      if (author) return author;
+    }
+    for (const selector of [
       "a[href*='/in/'] span[aria-hidden='true']",
       "a[href*='/company/'] span[aria-hidden='true']",
       "a[href*='/in/']",
       "a[href*='/company/']",
-    ];
-    for (const selector of selectors) {
-      const author = cleanAuthor(card.querySelector(selector));
-      if (author) return author;
+    ]) {
+      for (const el of card.querySelectorAll(selector)) {
+        const link = el.closest("a");
+        if (inCommentScope(el) || inViewerChrome(el)) continue;
+        if (isViewerLink(link, link?.querySelector?.("img"))) continue;
+        const author = cleanAuthor(el);
+        if (author) return author;
+      }
+    }
+    return "";
+  }
+
+  // First profile link that isn't comment/viewer chrome and isn't the viewer
+  // themselves — a viewer URL here would later be re-derived into the viewer's
+  // name by the UI when the author is missing.
+  function firstAuthorHref(scope) {
+    for (const a of scope?.querySelectorAll?.(
+      "a[href*='/in/'], a[href*='/company/']"
+    ) || []) {
+      if (inCommentScope(a) || inViewerChrome(a)) continue;
+      const img = a.querySelector("img");
+      if (img) {
+        const r = img.getBoundingClientRect?.();
+        // Small avatars are social-proof reactor chips, not the author.
+        if (r && Math.min(r.width, r.height) < 32) continue;
+      }
+      if (isViewerLink(a, img)) continue;
+      const url = absoluteUrl(attr(a, "href"));
+      if (url) return url;
     }
     return "";
   }
@@ -1345,8 +1488,7 @@
     const fallbackAuthor = fallbackAuthorFromCapture(text, media);
     const metadata = compactObject({
       urn,
-      authorProfileUrl:
-        firstHref(card, ["a[href*='/in/']", "a[href*='/company/']"]) || null,
+      authorProfileUrl: firstAuthorHref(card) || null,
       authorImage: extractAvatar(card) || null,
       links,
       capturedAt: new Date().toISOString(),
@@ -1375,6 +1517,7 @@
         ".update-components-actor__description",
         ".feed-shared-actor__description",
       ]) || null;
+    const actorLink = actorLinkIn(postEl);
     const authorProfileUrl =
       firstHref(postEl, [
         ".update-components-actor a[href*='/in/']",
@@ -1382,7 +1525,14 @@
         ".feed-shared-actor a[href*='/in/']",
         ".feed-shared-actor a[href*='/company/']",
       ]) ||
-      absoluteUrl(actorLinkIn(postEl).link?.getAttribute("href")) ||
+      // The viewer-flagged fallback link would resurface as the author in the
+      // UI (names get derived from profile URLs) — drop it instead.
+      (actorLink.isViewer
+        ? ""
+        : absoluteUrl(actorLink.link?.getAttribute("href"))) ||
+      // Header link whose avatar isn't an <img> (background-div builds):
+      // first sizable, non-viewer profile link in DOM order.
+      firstAuthorHref(postEl) ||
       null;
     const publishedText =
       firstText(postEl, [
