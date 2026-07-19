@@ -35,13 +35,32 @@ export async function authenticateRequest(req) {
   try {
     const payload = await verifyToken(token, {
       secretKey: process.env.CLERK_SECRET_KEY,
-      authorizedParties: [process.env.APP_ORIGIN],
+      authorizedParties: authorizedParties(),
     });
     if (!payload.sub) throw new Error("missing subject");
     return { userId: payload.sub, kind: "web" };
-  } catch {
+  } catch (error) {
+    // The reason never reaches the client (bare 401 there), but without a log
+    // an azp/secret misconfiguration is indistinguishable from a bad token.
+    // Clerk's message names the offending azp; it contains no token material.
+    console.warn("clerk token verification failed:", error?.message || error);
     throw new HttpAuthError("unauthorized");
   }
+}
+
+// The canonical origin plus the origins Vercel serves this same deployment
+// from (deployment URL, branch alias, production domain). A session minted on
+// any of them is first-party; anything else still fails the azp check.
+function authorizedParties() {
+  const parties = new Set([process.env.APP_ORIGIN]);
+  for (const host of [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ]) {
+    if (host) parties.add(`https://${host}`);
+  }
+  return [...parties];
 }
 
 export async function requireUser(req, res, { webOnly = false } = {}) {
