@@ -298,6 +298,17 @@
     handleSaveClick(event.target);
   };
 
+  // Viewer identity is cached across pages so obfuscated / non-feed surfaces —
+  // where the live nav can't name the viewer — still refuse to save the viewer
+  // as the post author. Persist every fresh read, and seed from storage on load
+  // (fills only what the live nav hasn't already resolved this session).
+  LIS.onViewerIdentityResolved = (identity) => {
+    LIS.safeStorageSet?.({ viewerIdentity: identity });
+  };
+  LIS.safeStorageGet?.(["viewerIdentity"], ({ viewerIdentity }) => {
+    if (viewerIdentity) LIS.primeViewerIdentity?.(viewerIdentity);
+  });
+
   document.addEventListener("click", LIS.onNativeSaveClick, true);
   document.addEventListener(
     "mouseover",
