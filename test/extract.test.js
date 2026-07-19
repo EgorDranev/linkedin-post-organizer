@@ -31,6 +31,9 @@ beforeAll(() => {
 
 afterEach(() => {
   document.body.innerHTML = "";
+  // The viewer-identity cache persists across extract() calls by design; clear
+  // it so a resolved viewer in one test can't leak into the next.
+  LIS.resetViewerIdentity();
 });
 
 function mount(html) {
@@ -229,6 +232,55 @@ NYT Bestselling Author | Entrepreneur</a></div>
     expect(captured.metadata.authorImage).toBeUndefined();
     // The post's own image is still captured — only the author is withheld.
     expect(captured.media[0]?.url).toBe("https://media.licdn.com/heather-doc-1.jpg");
+  });
+
+  // The stubborn variant: the viewer's avatar sits in NON-composer chrome (the
+  // comment box shows the avatar with no adjacent prompt text) AND the current
+  // page's nav can't identify the viewer — so neither the composer tell nor the
+  // live nav can catch it. But a page that COULD identify the viewer cached
+  // their identity, so the guard still fires here.
+  it("cached viewer identity guards a non-composer leak when the live nav is blind", () => {
+    // Seeded by a prior page (feed identity rail / Me menu) where the viewer
+    // WAS identifiable; persisted across pages.
+    LIS.primeViewerIdentity({ name: "egor dranev", slug: "egor-dranev-1909" });
+
+    document.body.innerHTML = `
+      <header class="_navobf"><img class="_mephoto" data-w="24" data-h="24" src="https://media.licdn.com/egor.jpg" alt=""></header>
+      <div id="post" class="_obf">
+        <button aria-label="more actions">more</button>
+        <div dir="auto">The One-Way Door Mistake Institutional Investors Make. Liquidity is a second chance in a liquid public stock.</div>
+        <img data-w="500" data-h="300" src="https://media.licdn.com/investing-doc.jpg" alt="">
+        <div class="_react">
+          ${AVATAR("https://www.linkedin.com/in/egor-dranev-1909", "https://media.licdn.com/egor.jpg", "Egor Dranev", 40)}
+        </div>
+      </div>
+    `;
+
+    const captured = LIS.extract(document.getElementById("post"));
+    expect(captured.author).toBeNull();
+    expect(captured.metadata.authorProfileUrl).toBeUndefined();
+    expect(captured.metadata.authorImage).toBeUndefined();
+  });
+
+  // The cache learns the viewer on an identifiable page and persists it: a fresh
+  // read resolves the slug and notifies the storage layer via the hook.
+  it("a resolved viewer identity is published for cross-page persistence", () => {
+    const persisted = [];
+    LIS.onViewerIdentityResolved = (id) => persisted.push(id);
+    try {
+      document.body.innerHTML = `
+        <div class="feed-identity-module"><a href="https://www.linkedin.com/in/egor-dranev-1909/"><img src="https://media.licdn.com/egor.jpg" alt="Egor Dranev" data-w="48" data-h="48"></a></div>
+        <div id="post" data-urn="urn:li:activity:7123456789012345678">
+          <div class="_hdr"><a href="https://www.linkedin.com/in/some-author">Some Author</a></div>
+          <div class="_body"><div dir="auto">A perfectly ordinary post body, long enough to be the commentary.</div></div>
+        </div>
+      `;
+      LIS.extract(document.getElementById("post"));
+      expect(persisted.length).toBeGreaterThan(0);
+      expect(persisted.at(-1)).toEqual({ name: "egor dranev", slug: "egor-dranev-1909" });
+    } finally {
+      delete LIS.onViewerIdentityResolved;
+    }
   });
 });
 

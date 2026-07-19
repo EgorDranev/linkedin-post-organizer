@@ -435,9 +435,30 @@
   // image viewer has no form/comments-* wrapper on class-obfuscated builds,
   // and its avatar link then reads as "the post author is the viewer". So
   // also learn who the viewer IS (global nav photo / identity rail) and let
-  // extraction refuse to credit them from any fallback path. Uncached: the
-  // nav is two cheap queries and extraction runs once per save.
-  function getViewerIdentity() {
+  // extraction refuse to credit them from any fallback path.
+  //
+  // The live nav frequently CAN'T identify the viewer on obfuscated or non-feed
+  // surfaces — exactly where the viewer used to leak in as the author. So the
+  // identity is cached across pages: the content script seeds it from storage at
+  // boot (LIS.primeViewerIdentity) and persists every fresh read
+  // (LIS.onViewerIdentityResolved), so a page that can't see the viewer still
+  // recognizes them from a page that could.
+  let viewerCache = { name: "", slug: "" };
+
+  // Boot seed from storage: fill only empty fields so it can never clobber a
+  // fresher read the live nav already made this session (e.g. after an account
+  // switch). The live refresh in getViewerIdentity overwrites on real change.
+  LIS.primeViewerIdentity = function primeViewerIdentity(identity) {
+    if (identity?.name && !viewerCache.name) viewerCache.name = String(identity.name);
+    if (identity?.slug && !viewerCache.slug) viewerCache.slug = String(identity.slug);
+  };
+
+  // Test seam: clear the cross-page cache so cases don't bleed between tests.
+  LIS.resetViewerIdentity = function resetViewerIdentity() {
+    viewerCache = { name: "", slug: "" };
+  };
+
+  function readLiveViewerIdentity() {
     // Slug is the exact, reliable signal — but the nav photo's alt is often
     // nameless on real builds, and a single link selector misses just as often.
     // LinkedIn exposes the viewer's profile link in several places depending on
@@ -476,6 +497,30 @@
     }
 
     return { name, slug };
+  }
+
+  function getViewerIdentity() {
+    const live = readLiveViewerIdentity();
+    let changed = false;
+    if (live.name && live.name !== viewerCache.name) {
+      viewerCache.name = live.name;
+      changed = true;
+    }
+    if (live.slug && live.slug !== viewerCache.slug) {
+      viewerCache.slug = live.slug;
+      changed = true;
+    }
+    // Persist only real changes so a stable page doesn't spam storage.
+    if (changed) {
+      LIS.onViewerIdentityResolved?.({
+        name: viewerCache.name,
+        slug: viewerCache.slug,
+      });
+    }
+    return {
+      name: live.name || viewerCache.name,
+      slug: live.slug || viewerCache.slug,
+    };
   }
 
   function isViewerLink(link, img) {

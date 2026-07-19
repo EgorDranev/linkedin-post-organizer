@@ -46,4 +46,25 @@
       return false;
     }
   };
+
+  LIS.safeStorageSet = function safeStorageSet(obj) {
+    if (!LIS.contextAlive()) {
+      runTeardowns();
+      return false;
+    }
+    try {
+      chrome.storage.local.set(obj, () => {
+        if (!LIS.contextAlive()) {
+          runTeardowns();
+          return;
+        }
+        // Read lastError to avoid unchecked-error warnings; nothing to retry.
+        void chrome.runtime.lastError;
+      });
+      return true;
+    } catch {
+      runTeardowns();
+      return false;
+    }
+  };
 })();
