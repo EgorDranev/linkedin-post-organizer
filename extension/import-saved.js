@@ -160,4 +160,131 @@
     text.textContent = prefix + counts(view.state);
     return el;
   };
+
+  function defaultDelay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // LinkedIn paginates the saved list with a "Show more results" button on
+  // some builds and plain infinite scroll on others — do both.
+  function clickShowMore() {
+    for (const btn of document.querySelectorAll("button")) {
+      if (/show more results/i.test((btn.textContent || "").trim())) {
+        btn.click();
+        return;
+      }
+    }
+  }
+
+  async function defaultLoadMore() {
+    const before = LIS.findSavedPostItems().length;
+    window.scrollTo(0, document.body.scrollHeight);
+    clickShowMore();
+    const deadline = Date.now() + NEW_CARDS_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await defaultDelay(NEW_CARDS_POLL_MS);
+      if (LIS.findSavedPostItems().length !== before) return;
+    }
+  }
+
+  let activeRun = null; // { stopRequested } while an import is in flight
+
+  function startImport() {
+    if (activeRun) return;
+    const run = { stopRequested: false };
+    activeRun = run;
+
+    const rerender = (state) =>
+      LIS.renderImportBanner({
+        mode: "running",
+        state,
+        onStop: () => {
+          run.stopRequested = true;
+        },
+      });
+    rerender({ imported: 0, duplicates: 0, failed: 0 });
+
+    LIS.runSavedImport({
+      collect: () => LIS.findSavedPostItems(),
+      extract: (item) => LIS.extractSavedItem(item),
+      capture: (payload) =>
+        LIS.capturePayload(payload, { createOnly: true, silent: true }),
+      loadMore: defaultLoadMore,
+      delay: defaultDelay,
+      shouldStop: () =>
+        run.stopRequested || activeRun !== run || !LIS.contextAlive(),
+      onProgress: rerender,
+    }).then((state) => {
+      if (activeRun !== run) return; // user navigated away; banner is gone
+      activeRun = null;
+      LIS.renderImportBanner({ mode: "done", state });
+    });
+  }
+
+  function showEntryBanner() {
+    const started = LIS.safeStorageGet(
+      ["extensionToken"],
+      ({ extensionToken }) => {
+        // Re-check: the async storage read may land after navigation.
+        if (!LIS.isSavedPostsPath(location.pathname)) return;
+        if (extensionToken) {
+          LIS.renderImportBanner({ mode: "idle", onStart: startImport });
+        } else {
+          LIS.renderImportBanner({ mode: "disconnected" });
+        }
+      }
+    );
+    if (!started) removeBanner();
+  }
+
+  function onLocationMaybeChanged() {
+    if (LIS.isSavedPostsPath(location.pathname)) {
+      // Never clobber a running or finished banner; only add the entry banner
+      // when none exists yet.
+      if (!document.getElementById(BANNER_ID) && !activeRun) showEntryBanner();
+    } else {
+      if (activeRun) {
+        activeRun.stopRequested = true;
+        activeRun = null;
+      }
+      removeBanner();
+    }
+  }
+
+  function boot() {
+    // Only boot as a real content script; under tests there is no chrome API.
+    if (!globalThis.chrome?.runtime?.id) return;
+
+    // LinkedIn is a SPA: URL changes don't re-run content scripts, so watch
+    // DOM mutations (coalesced, same pattern as content.js) plus history nav.
+    let timer = 0;
+    function schedule() {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = 0;
+        if (!LIS.contextAlive()) return shutdown();
+        onLocationMaybeChanged();
+      }, 250);
+    }
+
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("popstate", schedule);
+    onLocationMaybeChanged();
+
+    function shutdown() {
+      if (timer) clearTimeout(timer);
+      observer.disconnect();
+      window.removeEventListener("popstate", schedule);
+      if (activeRun) {
+        activeRun.stopRequested = true;
+        activeRun = null;
+      }
+      removeBanner();
+    }
+
+    LIS.onContextInvalidated(shutdown);
+  }
+
+  boot();
 })();
