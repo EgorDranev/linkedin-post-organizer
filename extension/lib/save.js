@@ -47,7 +47,7 @@
     return raw;
   }
 
-  function sendSaveMessage(payload) {
+  function sendSaveMessage(payload, options = {}) {
     return new Promise((resolve) => {
       try {
         chrome.runtime.sendMessage({ type: "save-post", payload }, (resp) => {
@@ -59,7 +59,9 @@
             const err = friendlyError(
               chrome.runtime.lastError?.message || resp?.error || ""
             );
-            LIS.showToast(`LinkedIn Saver: ${err}`, "error");
+            if (!options.silent) {
+              LIS.showToast(`LinkedIn Saver: ${err}`, "error");
+            }
             resolve({ ok: false, error: err });
             return;
           }
@@ -81,7 +83,7 @@
     // have no extractable permalink (the in-memory 2.5s dedupe stays too).
     const body = { ...payload };
     if (options.createOnly) body.createOnly = true;
-    return sendSaveMessage(body);
+    return sendSaveMessage(body, { silent: options.silent === true });
   };
 
   LIS.capturePost = function capturePost(postEl, options = {}) {
