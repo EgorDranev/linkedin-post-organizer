@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn Saver",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Automatically save LinkedIn posts to your LinkedIn Saver app when you bookmark them.",
   "permissions": ["storage"],
   "host_permissions": [
