@@ -334,6 +334,24 @@
     return el?.getAttribute?.(name) || "";
   }
 
+  // The comments block (list + composer) lives INSIDE the update container, so
+  // every extractor that scans the post root must skip it: the composer shows
+  // the viewer's own avatar/name, and commenter text/links/images are not post
+  // content. Comment module classes stay semantic ("comments-…") even on
+  // builds that obfuscate feed component classes.
+  const COMMENT_SCOPE = [
+    "[class*='comments-']",
+    ".feed-shared-update-v2__comments-container",
+    ".ql-editor",
+    "[contenteditable='true']",
+    "[role='textbox']",
+    "form",
+  ].join(", ");
+
+  function inCommentScope(el) {
+    return Boolean(el?.closest?.(COMMENT_SCOPE));
+  }
+
   function isVisibleElement(el) {
     const r = el?.getBoundingClientRect?.();
     return !r || (r.width > 0 && r.height > 0);
@@ -385,15 +403,19 @@
   function actorLinkIn(scope) {
     const links =
       scope?.querySelectorAll?.("a[href*='/in/'], a[href*='/company/']") || [];
-    // The post author's avatar is the most prominent (≈48px). Social-proof
-    // reactors ("X loves this") and inline mentions render much smaller (≈24px)
-    // and sit above/within the post, so pick the largest avatar, not the first.
+    // The post author's avatar leads the post header (≈48px). Social-proof
+    // reactors ("X loves this") sit above it but render small (≈24px), so the
+    // first sizable avatar in DOM order is the author. Commenter/composer
+    // avatars are just as large but come later — and the composer would match
+    // the VIEWER's own profile — so comment scopes are skipped outright.
     let best = { link: null, img: null, size: -1 };
     for (const link of links) {
+      if (inCommentScope(link)) continue;
       const img = link.querySelector("img");
       if (!img) continue;
       const r = img.getBoundingClientRect?.();
       const size = r ? Math.min(r.width, r.height) : 0;
+      if (size >= 32) return { link, img, size };
       if (size > best.size) best = { link, img, size };
     }
     return best;
@@ -424,11 +446,14 @@
       "img[class*='EntityPhoto']",
     ];
     for (const selector of selectors) {
-      const img = scope?.querySelector?.(selector);
-      if (!img) continue;
-      const url = imageUrl(img);
-      // Skip lazy-load ghosts (data: placeholders) — only real CDN photos.
-      if (url && /^https?:/i.test(url)) return url;
+      for (const img of scope?.querySelectorAll?.(selector) || []) {
+        // Presence/entity image classes also appear on commenter avatars —
+        // only the post header's avatar counts.
+        if (inCommentScope(img)) continue;
+        const url = imageUrl(img);
+        // Skip lazy-load ghosts (data: placeholders) — only real CDN photos.
+        if (url && /^https?:/i.test(url)) return url;
+      }
     }
     // Class-obfuscated builds: the avatar lives inside the actor header link.
     const url = imageUrl(actorLinkIn(scope).img);
@@ -484,12 +509,27 @@
     const direct = uniqueTexts(
       selectors
         .map((selector) => postEl?.querySelector(selector))
-        .filter((el) => el && !isAttachmentTextNode(el))
+        .filter((el) => el && !isAttachmentTextNode(el) && !inCommentScope(el))
         .map(clean)
     );
     if (direct.length) return direct[0];
 
+    // On class-obfuscated builds isAttachmentTextNode can't see the video
+    // player, whose captions/transcript would out-length the commentary and
+    // win the fallback below. The player's top-level section within the post
+    // is structural, not class-based: the ancestor of <video> that is a direct
+    // child of the post root. Text inside it is never commentary.
+    const videoSection = (() => {
+      let node = postEl?.querySelector?.("video");
+      if (!node) return null;
+      while (node.parentElement && node.parentElement !== postEl) {
+        node = node.parentElement;
+      }
+      return node.parentElement === postEl ? node : null;
+    })();
+
     const scoped = [];
+    const scopedInVideoSection = [];
     for (const el of postEl?.querySelectorAll?.(
       [
         "[data-test-id*='commentary']",
@@ -501,15 +541,23 @@
     ) || []) {
       if (!isVisibleElement(el)) continue;
       if (isAttachmentTextNode(el)) continue;
+      if (inCommentScope(el)) continue;
       if (el.closest(".update-components-actor, .feed-shared-actor")) continue;
       if (el.closest(".feed-shared-social-action-bar, .social-details-social-actions")) continue;
       if (el.closest("[role='menu'], .artdeco-dropdown__content")) continue;
       const text = clean(el);
       if (text.length < 12 || isChromeText(text)) continue;
+      if (videoSection && videoSection.contains(el)) {
+        scopedInVideoSection.push(text);
+        continue;
+      }
       scoped.push(text);
     }
 
-    const candidates = uniqueTexts(scoped).sort((a, b) => b.length - a.length);
+    // A video-only post (no commentary outside the player section) still
+    // deserves its caption text over nothing at all.
+    const pool = scoped.length ? scoped : scopedInVideoSection;
+    const candidates = uniqueTexts(pool).sort((a, b) => b.length - a.length);
     return candidates[0] || "";
   }
 
@@ -625,6 +673,7 @@
     const seen = new Set();
     for (const a of postEl?.querySelectorAll?.("a[href]") || []) {
       if (!isVisibleElement(a)) continue;
+      if (inCommentScope(a)) continue;
       if (a.closest(".update-components-actor, .feed-shared-actor")) continue;
       if (a.closest(".feed-shared-social-action-bar, .social-details-social-actions")) continue;
       if (a.closest("[role='menu'], .artdeco-dropdown__content")) continue;
@@ -660,55 +709,60 @@
     return uniqueTexts(lines).join("\n").trim();
   }
 
+  // A count must start with a digit — "[\d,.]+" alone also matches a lone "."
+  // or ",", which then rendered as a bogus stat on the card.
+  const COUNT_SRC = "\\d[\\d,.]*\\s*[KkMm]?";
+
+  function countIn(text) {
+    return text.match(new RegExp(`(${COUNT_SRC})`))?.[1]?.trim() || "";
+  }
+
   function extractSocialCounts(postEl) {
     const counts = {};
     const text = clean(postEl);
-    
+
     // Extract likes/reactions using multiple methods
-    const reactions = text.match(/([\d,.]+[KkMm]?)\s+(?:reaction|like)/);
-    if (reactions) counts.reactions = reactions[1];
-    
+    const reactions = text.match(new RegExp(`(${COUNT_SRC})\\s+(?:reaction|like)`));
+    if (reactions) counts.reactions = reactions[1].trim();
+
     // Look for like counts in elements
     const likeElements = postEl.querySelectorAll('.social-details-social-counts__item, .social-counts, .react-button__reactors-count, [data-test-id*="like-count"]');
     for (const element of likeElements) {
-      const likeText = clean(element);
-      const likeMatch = likeText.match(/([\d,.]+[KkMm]?)/);
-      if (likeMatch) {
-        counts.reactions = likeMatch[1];
+      const count = countIn(clean(element));
+      if (count) {
+        counts.reactions = count;
         break;
       }
     }
-    
+
     // Extract comments
-    const comments = text.match(/([\d,.]+[KkMm]?)\s+comment/);
-    if (comments) counts.comments = comments[1];
-    
+    const comments = text.match(new RegExp(`(${COUNT_SRC})\\s+comment`));
+    if (comments) counts.comments = comments[1].trim();
+
     // Look for comment counts in elements
     const commentElements = postEl.querySelectorAll('.comments-button, .social-details-social-counts__comments, [data-test-id*="comment-count"]');
     for (const element of commentElements) {
-      const commentText = clean(element);
-      const commentMatch = commentText.match(/([\d,.]+[KkMm]?)/);
-      if (commentMatch) {
-        counts.comments = commentMatch[1];
+      const count = countIn(clean(element));
+      if (count) {
+        counts.comments = count;
         break;
       }
     }
-    
+
     // Extract reposts/shares
-    const reposts = text.match(/([\d,.]+[KkMm]?)\s+(?:repost|share)/);
-    if (reposts) counts.reposts = reposts[1];
-    
+    const reposts = text.match(new RegExp(`(${COUNT_SRC})\\s+(?:repost|share)`));
+    if (reposts) counts.reposts = reposts[1].trim();
+
     // Look for share counts in elements
     const shareElements = postEl.querySelectorAll('.social-details-social-counts__reshares, [data-test-id*="repost-count"]');
     for (const element of shareElements) {
-      const shareText = clean(element);
-      const shareMatch = shareText.match(/([\d,.]+[KkMm]?)/);
-      if (shareMatch) {
-        counts.reposts = shareMatch[1];
+      const count = countIn(clean(element));
+      if (count) {
+        counts.reposts = count;
         break;
       }
     }
-    
+
     return counts;
   }
 
@@ -842,6 +896,9 @@
         matchesAny(el, [
           ".feed-shared-external-video",
           ".update-components-external-video",
+          "iframe[src*='youtube.com']",
+          "iframe[src*='youtu.be']",
+          "iframe[src*='vimeo.com']",
         ]),
     ],
     [
@@ -867,7 +924,12 @@
         /* a single rule failing must not break classification */
       }
     }
-    if (extractMedia(postEl).length > 0) return "media";
+    // No structural rule matched (obfuscated classes) — let the captured media
+    // speak: a video item means a video post, images mean a photo post.
+    const media = extractMedia(postEl);
+    if (media.some((item) => item.type === "video")) return "video";
+    if (media.some((item) => item.type === "image")) return "image";
+    if (media.length > 0) return "media";
     return "text";
   }
 
@@ -1026,15 +1088,38 @@
       });
     }
 
+    // External embeds without a recognizable card class still leave a YouTube
+    // URL in an iframe or anchor — enough to save a playable link plus a real
+    // thumbnail (YouTube's thumbnail URLs are derivable from the video id).
+    for (const embed of postEl?.querySelectorAll?.(
+      "iframe[src], a[href*='youtube.com'], a[href*='youtu.be']"
+    ) || []) {
+      if (inCommentScope(embed)) continue;
+      const url = canonicalLinkedInUrl(
+        absoluteUrl(attr(embed, "src") || attr(embed, "href"))
+      );
+      const thumbnailUrl = youtubeThumbnail(url);
+      if (!thumbnailUrl) continue;
+      pushUniqueMedia(media, seen, {
+        type: "video",
+        url,
+        thumbnailUrl,
+        title: cleanLinkedInText(attr(embed, "title") || attr(embed, "aria-label")),
+        provider: "YouTube",
+      });
+    }
+
     for (const video of postEl?.querySelectorAll?.("video") || []) {
       pushUniqueMedia(media, seen, {
         type: "video",
         url: absoluteUrl(attr(video, "src")),
-        thumbnailUrl: absoluteUrl(attr(video, "poster")),
+        thumbnailUrl: videoPoster(video, postEl),
+        title: cleanLinkedInText(attr(video, "aria-label")),
       });
     }
 
     for (const img of postEl?.querySelectorAll?.("img") || []) {
+      if (inCommentScope(img)) continue;
       if (!isPostImage(img)) continue;
       pushUniqueMedia(media, seen, {
         type: "image",
@@ -1046,6 +1131,45 @@
     }
 
     return media.slice(0, 12);
+  }
+
+  function youtubeThumbnail(url) {
+    const id = String(url || "").match(
+      /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{6,})/i
+    )?.[1];
+    return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : "";
+  }
+
+  function styleBackgroundUrl(el) {
+    const m = attr(el, "style").match(/background-image:\s*url\(["']?(.+?)["']?\)/i);
+    return m ? absoluteUrl(m[1]) : "";
+  }
+
+  // LinkedIn's player often omits the poster attribute; the frame image then
+  // lives on a sibling (video.js poster div or a plain <img> overlay) inside
+  // the player container.
+  function videoPoster(video, postEl) {
+    const direct = absoluteUrl(attr(video, "poster") || attr(video, "data-poster"));
+    if (direct) return direct;
+
+    let container = video;
+    while (
+      container.parentElement &&
+      container.parentElement !== postEl &&
+      !container.querySelector("img, .vjs-poster, [style*='background-image']")
+    ) {
+      container = container.parentElement;
+    }
+
+    const posterEl = container.querySelector(".vjs-poster, [style*='background-image']");
+    const fromStyle = styleBackgroundUrl(posterEl);
+    if (fromStyle) return fromStyle;
+
+    for (const img of container.querySelectorAll("img")) {
+      const url = imageUrl(img);
+      if (url && /^https?:/i.test(url) && isPostImage(img)) return url;
+    }
+    return "";
   }
 
   function findPostUrlIn(el) {

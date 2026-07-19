@@ -577,11 +577,13 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
     .slice(0, 6);
 
   // Engagement surfaced as compact stats (full detail lives in the reader).
-  // Counts are only shown when present.
+  // Counts are only shown when present. Older saves may hold digit-less junk
+  // ("." matched by a lax counter regex) — never render those.
   const social = post.metadata?.socialCounts || {};
-  const reactions = social.reactions;
-  const comments = social.comments;
-  const reposts = social.reposts;
+  const asCount = (value) => (value && /\d/.test(value) ? value : "");
+  const reactions = asCount(social.reactions);
+  const comments = asCount(social.comments);
+  const reposts = asCount(social.reposts);
   const publishedText = post.metadata?.publishedText || "";
 
   // Sub-line under the author: role/company, a domain only when the save
