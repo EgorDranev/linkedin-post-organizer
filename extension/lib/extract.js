@@ -123,6 +123,28 @@
     return score;
   }
 
+  // How many distinct feed posts a subtree spans. Extraction assumes exactly
+  // one — a root spanning two stitches one post's text onto a neighbor's image
+  // and author. Reshare-safe: a reshare nests the original's activity urn inside
+  // the outer post (so only the outermost identities count) and the embedded
+  // original carries no ⋯ control menu of its own, so the obfuscated fallback
+  // (one menu per real feed post, aria-label survives class obfuscation) stays 1
+  // for reshares. Returns 1 when no marker is present — never over-splits.
+  function postSpanCount(el) {
+    if (!el?.querySelectorAll) return 1;
+    const ids = [
+      ...el.querySelectorAll(
+        "[data-urn*='urn:li:activity'], [data-id*='urn:li:activity']"
+      ),
+    ];
+    const roots = ids.filter((a) => !ids.some((b) => b !== a && b.contains(a)));
+    if (roots.length) return roots.length;
+    const menus = el.querySelectorAll(
+      "button[aria-label*='control menu' i], button[aria-label*='more actions' i], .feed-shared-control-menu__trigger"
+    ).length;
+    return menus || 1;
+  }
+
   function normalizePostRoot(el) {
     if (!el?.parentElement) return el || null;
     let best = el;
@@ -133,6 +155,9 @@
       if (node === document.body || node === document.documentElement) break;
       const r = node.getBoundingClientRect?.();
       if (r && r.width > innerWidth * 0.98 && r.height > innerHeight * 1.4) break;
+      // Climbing into a wrapper that holds a second post would merge two posts
+      // into one record — stop at the largest single-post subtree.
+      if (postSpanCount(node) > 1) break;
 
       const score = contentSignalScore(node);
       if (score > bestScore) {
@@ -172,6 +197,10 @@
     if (r.width > innerWidth * 0.98 && r.height > innerHeight * 0.9) return 0;
     if (el.closest("header, nav, footer, [role='banner'], [role='navigation']")) return 0;
     if (el.closest(".msg-overlay-bubble-header, .msg-overlay-list-bubble")) return 0;
+    // A wrapper spanning two posts (the "main div" catch-all is happy to match
+    // one) must never win: extraction over it stitches one post's text onto a
+    // neighbor's image. Prefer the single-post subtree nested inside it.
+    if (postSpanCount(el) > 1) return 0;
 
     const text = clean(el);
     if (text.length < 30) return 0;
@@ -371,6 +400,24 @@
     return Boolean(el?.closest?.(VIEWER_CHROME));
   }
 
+  // The collapsed "Add a comment…" composer renders the VIEWER's avatar next to
+  // a short prompt, but on class-obfuscated builds it carries none of the
+  // comment/composer class markers COMMENT_SCOPE/VIEWER_CHROME look for. Its
+  // one tell survives obfuscation: the prompt copy sitting beside the avatar.
+  // Detecting it here means a headerless post never credits the viewer's
+  // composer avatar as the author, even when the viewer's identity is unknown.
+  // Bounded to a short container so a real post body that merely mentions
+  // "add a comment" can't blank its own author.
+  function looksLikeCommentComposer(link) {
+    const container = link?.closest?.("div, li, form, section");
+    if (!container) return false;
+    const text = clean(container);
+    if (!text || text.length > 80) return false;
+    return /\badd a comment\b|\bjoin the conversation\b|\bleave a comment\b|\bcomment to join\b|\badd a reply\b/i.test(
+      text
+    );
+  }
+
   function profileSlug(href) {
     return (
       String(href || "")
@@ -391,16 +438,44 @@
   // extraction refuse to credit them from any fallback path. Uncached: the
   // nav is two cheap queries and extraction runs once per save.
   function getViewerIdentity() {
-    const photo = document.querySelector(
-      "img.global-nav__me-photo, .global-nav__me img, .feed-identity-module img"
-    );
-    const link = document.querySelector(
-      ".feed-identity-module a[href*='/in/'], .global-nav__me a[href*='/in/']"
-    );
-    return {
-      name: normalizedName(nameFromAvatarAlt(attr(photo, "alt"))),
-      slug: profileSlug(attr(link, "href")),
-    };
+    // Slug is the exact, reliable signal — but the nav photo's alt is often
+    // nameless on real builds, and a single link selector misses just as often.
+    // LinkedIn exposes the viewer's profile link in several places depending on
+    // build/page: the feed identity rail, the global-nav "Me" menu (and its
+    // dropdown), the "view profile" control, or the anchor wrapping the nav
+    // photo. Try them all — the moment one resolves, the viewer guards can fire
+    // even when no name is available anywhere.
+    let slug = "";
+    for (const selector of [
+      ".feed-identity-module a[href*='/in/']",
+      ".global-nav__me a[href*='/in/']",
+      ".global-nav__me-content a[href*='/in/']",
+      ".global-nav__me-dropdown a[href*='/in/']",
+      "a[data-control-name='nav.settings_view_profile']",
+      "a[data-control-name='identity_welcome_message']",
+    ]) {
+      slug = profileSlug(attr(document.querySelector(selector), "href"));
+      if (slug) break;
+    }
+    if (!slug) {
+      const photoLink = document
+        .querySelector("img.global-nav__me-photo, .global-nav__me img")
+        ?.closest?.("a[href*='/in/']");
+      slug = profileSlug(attr(photoLink, "href"));
+    }
+
+    // Name is a softer signal (exact-match only) and the last resort when the
+    // build exposes no profile link at all.
+    let name = "";
+    for (const photo of [
+      document.querySelector("img.global-nav__me-photo, .global-nav__me img"),
+      document.querySelector(".feed-identity-module img"),
+    ]) {
+      name = normalizedName(nameFromAvatarAlt(attr(photo, "alt")));
+      if (name) break;
+    }
+
+    return { name, slug };
   }
 
   function isViewerLink(link, img) {
@@ -478,7 +553,7 @@
     let best = { link: null, img: null, size: -1 };
     let viewerBest = { link: null, img: null, size: -1, isViewer: true };
     for (const link of links) {
-      if (inCommentScope(link) || inViewerChrome(link)) continue;
+      if (inCommentScope(link) || inViewerChrome(link) || looksLikeCommentComposer(link)) continue;
       const img = link.querySelector("img");
       if (!img) continue;
       const r = img.getBoundingClientRect?.();
@@ -699,7 +774,7 @@
     for (const link of postEl?.querySelectorAll?.(
       "a[href*='/in/'], a[href*='/company/']"
     ) || []) {
-      if (inCommentScope(link) || inViewerChrome(link)) continue;
+      if (inCommentScope(link) || inViewerChrome(link) || looksLikeCommentComposer(link)) continue;
       const img = link.querySelector("img");
       if (img) {
         const r = img.getBoundingClientRect?.();
@@ -1361,7 +1436,7 @@
     for (const a of scope?.querySelectorAll?.(
       "a[href*='/in/'], a[href*='/company/']"
     ) || []) {
-      if (inCommentScope(a) || inViewerChrome(a)) continue;
+      if (inCommentScope(a) || inViewerChrome(a) || looksLikeCommentComposer(a)) continue;
       const img = a.querySelector("img");
       if (img) {
         const r = img.getBoundingClientRect?.();
@@ -1518,7 +1593,7 @@
         ".feed-shared-actor__description",
       ]) || null;
     const actorLink = actorLinkIn(postEl);
-    const authorProfileUrl =
+    let authorProfileUrl =
       firstHref(postEl, [
         ".update-components-actor a[href*='/in/']",
         ".update-components-actor a[href*='/company/']",
@@ -1534,6 +1609,18 @@
       // first sizable, non-viewer profile link in DOM order.
       firstAuthorHref(postEl) ||
       null;
+    let authorImage = extractAvatar(postEl);
+
+    // Name, profile URL, and avatar must describe the SAME person. These come
+    // from independent scans that can diverge on headerless or multi-post
+    // captures — e.g. the name resolves to nobody while a separate scan lands
+    // on the viewer's composer avatar/link. When no author name survived, a
+    // stray profile URL or avatar would be re-derived into the viewer's name by
+    // the web app (deriveAuthor → nameFromProfileUrl), so blank them together.
+    if (!author) {
+      authorProfileUrl = null;
+      authorImage = "";
+    }
     const publishedText =
       firstText(postEl, [
         ".update-components-actor__sub-description",
@@ -1573,7 +1660,7 @@
     const metadata = compactObject({
       urn,
       authorProfileUrl,
-      authorImage: extractAvatar(postEl),
+      authorImage,
       publishedText,
       publishedDate,
       links,

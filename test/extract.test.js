@@ -137,6 +137,37 @@ NYT Bestselling Author | Entrepreneur</a></div>
     expect(captured.text).toBe("The best mental health hack is physical.");
   });
 
+  // Real builds routinely render the nav "Me" photo with no name in its alt, so
+  // a name-only viewer check silently no-ops and the viewer's composer avatar +
+  // profile link leak in as the author. The viewer's profile link (Me menu /
+  // identity rail) still carries their slug — enough to keep the guards firing.
+  it("nameless nav photo: the viewer is still guarded via their profile slug", () => {
+    document.body.innerHTML = `
+      <header class="global-nav">
+        <img class="global-nav__me-photo" data-w="24" data-h="24"
+             src="https://media.licdn.com/egor.jpg" alt="">
+        <div class="global-nav__me-content">
+          <a href="https://www.linkedin.com/in/egor-dranev-1909/">Me</a>
+        </div>
+      </header>
+      <div id="post" data-urn="urn:li:activity:7123456789012345678">
+        <div class="_hdr"><a href="https://www.linkedin.com/in/heathermaietta">Heather Maietta</a></div>
+        <div class="_body"><div dir="auto">12 RESUME PROMPTS to turn your job search candidacy from ZERO to HERO.</div></div>
+        <div class="_prompt">
+          ${AVATAR("https://www.linkedin.com/in/egor-dranev-1909", "https://media.licdn.com/egor.jpg", "Egor Dranev", 40)}
+          <span>Add a comment…</span>
+        </div>
+      </div>
+    `;
+
+    const captured = LIS.extract(document.getElementById("post"));
+    expect(captured.author).toBe("Heather Maietta");
+    expect(captured.metadata.authorProfileUrl).toBe(
+      "https://www.linkedin.com/in/heathermaietta"
+    );
+    expect(captured.metadata.authorImage).toBeUndefined();
+  });
+
   it("viewer-only candidates: author stays blank rather than becoming the viewer", () => {
     const post = mountWithNav(`
       <div id="post" data-urn="urn:li:activity:7123456789012345678">
@@ -171,6 +202,74 @@ NYT Bestselling Author | Entrepreneur</a></div>
     expect(captured.metadata.authorProfileUrl).toBe(
       "https://www.linkedin.com/in/egor-dranev-1909"
     );
+  });
+
+  // Worst case: a headerless post whose only profile link is the viewer's
+  // collapsed "Add a comment…" composer, AND the nav exposes no identity at all
+  // (obfuscated class, empty photo alt, no profile link) so the viewer can't be
+  // learned. The composer's prompt copy is the one obfuscation-proof tell — the
+  // author must stay blank rather than becoming the viewer.
+  it("headerless post + composer prompt + unidentifiable nav: author stays blank", () => {
+    document.body.innerHTML = `
+      <header class="_navobf"><img class="_mephoto" data-w="24" data-h="24" src="https://media.licdn.com/egor.jpg" alt=""></header>
+      <div id="post" class="_obf">
+        <button aria-label="more actions">more</button>
+        <div dir="auto">12 RESUME PROMPTS to turn your job search candidacy from ZERO to HERO.</div>
+        <img data-w="500" data-h="300" src="https://media.licdn.com/heather-doc-1.jpg" alt="">
+        <div class="_prompt">
+          ${AVATAR("https://www.linkedin.com/in/egor-dranev-1909", "https://media.licdn.com/egor.jpg", "Egor Dranev", 40)}
+          <span>Add a comment…</span>
+        </div>
+      </div>
+    `;
+
+    const captured = LIS.extract(document.getElementById("post"));
+    expect(captured.author).toBeNull();
+    expect(captured.metadata.authorProfileUrl).toBeUndefined();
+    expect(captured.metadata.authorImage).toBeUndefined();
+    // The post's own image is still captured — only the author is withheld.
+    expect(captured.media[0]?.url).toBe("https://media.licdn.com/heather-doc-1.jpg");
+  });
+});
+
+// A save must capture exactly one feed post. On class-obfuscated builds where
+// posts carry no data-urn / container class, the boundary resolver used to fall
+// through to a wrapper spanning two adjacent posts — stitching one post's text
+// onto the neighbour's image (and author). See fix in extract.js postSpanCount.
+describe("a capture never spans two adjacent posts", () => {
+  const POST_B = `
+    <div id="postB" class="_obfB">
+      <button aria-label="more actions">more</button>
+      <div dir="auto">Sahil Bloom side quest tweet screenshot</div>
+      <img id="bimg" data-w="500" data-h="300" src="https://media.licdn.com/sahil-tweet.jpg" alt="">
+    </div>`;
+  const POST_A = `
+    <div id="postA" class="_obfA">
+      <button aria-label="more actions">more</button>
+      <div id="atext" dir="auto">12 RESUME PROMPTS to turn your job search candidacy from ZERO to HERO. PROMPT: I have worked as a position title for years now.</div>
+      <img id="aimg" data-w="500" data-h="300" src="https://media.licdn.com/heather-doc-1.jpg" alt="">
+    </div>`;
+
+  it("findBestPostCandidate rejects the two-post wrapper and picks the single post", () => {
+    document.body.innerHTML = `<main><div id="wrap">${POST_B}${POST_A}</div></main>`;
+    const start = document.getElementById("atext");
+    // Fully obfuscated: findPostFrom can't anchor on a post → resolver falls to
+    // findBestPostCandidate, which must not return the two-post #wrap.
+    const candidate = LIS.findBestPostCandidate(start);
+    expect(candidate.id).toBe("postA");
+    expect(candidate.querySelector("#bimg")).toBeNull();
+
+    const captured = LIS.extract(candidate);
+    expect(captured.text).toContain("RESUME PROMPTS");
+    expect(captured.media[0]?.url).toBe("https://media.licdn.com/heather-doc-1.jpg");
+    expect(captured.media.some((m) => /sahil-tweet/.test(m.url))).toBe(false);
+  });
+
+  it("normalizePostRoot stops climbing before it swallows a neighbour post", () => {
+    document.body.innerHTML = `<main><div id="wrap">${POST_B}${POST_A}</div></main>`;
+    const root = LIS.extract(document.getElementById("postA"));
+    expect(root.text).toContain("RESUME PROMPTS");
+    expect(root.media.some((m) => /sahil-tweet/.test(m.url))).toBe(false);
   });
 });
 
