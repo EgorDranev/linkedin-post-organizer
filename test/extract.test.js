@@ -97,6 +97,83 @@ describe("author and avatar never come from the comments block", () => {
   });
 });
 
+// The media-viewer overlay renders a collapsed "Add a comment…" prompt with
+// the VIEWER's avatar but none of the structural comment markers (no form, no
+// comments-* class), and the author header's avatar is a background div — no
+// <img> inside the profile link. The only sizable avatar link then belongs to
+// the viewer, who used to be captured as the post author. The extractor now
+// knows the viewer's identity from the global nav and refuses to credit them.
+describe("the viewer is never captured as the author", () => {
+  function mountWithNav(postHtml) {
+    document.body.innerHTML = `
+      <header class="global-nav">
+        <img class="global-nav__me-photo" data-w="24" data-h="24"
+             src="https://media.licdn.com/egor.jpg" alt="Egor Dranev">
+      </header>
+      ${postHtml}
+    `;
+    return document.getElementById("post");
+  }
+
+  it("media-viewer prompt: author from the imgless header link, not the viewer", () => {
+    const post = mountWithNav(`
+      <div id="post" data-urn="urn:li:activity:7123456789012345678">
+        <div class="_hdr"><a href="https://www.linkedin.com/in/sahilbloom">Sahil Bloom
+NYT Bestselling Author | Entrepreneur</a></div>
+        <div class="_body"><div dir="auto">The best mental health hack is physical.</div></div>
+        <div class="_prompt">
+          ${AVATAR("https://www.linkedin.com/in/egor-dranev-1909", "https://media.licdn.com/egor.jpg", "Egor Dranev", 40)}
+          <span>Add a comment…</span>
+        </div>
+      </div>
+    `);
+
+    const captured = LIS.extract(post);
+    expect(captured.author).toBe("Sahil Bloom");
+    expect(captured.metadata.authorProfileUrl).toBe(
+      "https://www.linkedin.com/in/sahilbloom"
+    );
+    expect(captured.metadata.authorImage).toBeUndefined();
+    expect(captured.text).toBe("The best mental health hack is physical.");
+  });
+
+  it("viewer-only candidates: author stays blank rather than becoming the viewer", () => {
+    const post = mountWithNav(`
+      <div id="post" data-urn="urn:li:activity:7123456789012345678">
+        <div class="_body"><div dir="auto">Commentary long enough to be the body.</div></div>
+        <div class="_prompt">
+          ${AVATAR("https://www.linkedin.com/in/egor-dranev-1909", "https://media.licdn.com/egor.jpg", "Egor Dranev", 40)}
+          <span>Add a comment…</span>
+        </div>
+      </div>
+    `);
+
+    const captured = LIS.extract(post);
+    expect(captured.author).toBeNull();
+    expect(captured.metadata.authorProfileUrl).toBeUndefined();
+    expect(captured.metadata.authorImage).toBeUndefined();
+  });
+
+  it("the viewer's own post still credits them via the named actor block", () => {
+    const post = mountWithNav(`
+      <div id="post" class="feed-shared-update-v2" data-urn="urn:li:activity:7123456789012345678">
+        <div class="update-components-actor">
+          ${AVATAR("https://www.linkedin.com/in/egor-dranev-1909", "https://media.licdn.com/egor.jpg", "View Egor Dranev’s profile", 48)}
+          <span class="update-components-actor__title"><span aria-hidden="true">Egor Dranev</span></span>
+        </div>
+        <div class="update-components-text"><span aria-hidden="true">My own post about something.</span></div>
+      </div>
+    `);
+
+    const captured = LIS.extract(post);
+    expect(captured.author).toBe("Egor Dranev");
+    expect(captured.metadata.authorImage).toBe("https://media.licdn.com/egor.jpg");
+    expect(captured.metadata.authorProfileUrl).toBe(
+      "https://www.linkedin.com/in/egor-dranev-1909"
+    );
+  });
+});
+
 describe("video posts", () => {
   it("commentary beats longer caption/transcript text inside the player section", () => {
     const post = mount(`
