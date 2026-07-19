@@ -147,3 +147,55 @@ describe("run-fatal error classification", () => {
     expect(globalThis.LIS.isRunFatalError(undefined)).toBe(false);
   });
 });
+
+describe("import banner", () => {
+  it("renders the idle state with a working Start button", () => {
+    const onStart = vi.fn();
+    const el = globalThis.LIS.renderImportBanner({ mode: "idle", onStart });
+    expect(el.textContent).toMatch(/Import these saved posts/);
+    el.querySelector("button").click();
+    expect(onStart).toHaveBeenCalled();
+  });
+
+  it("renders running counters and a Stop button", () => {
+    const onStop = vi.fn();
+    const el = globalThis.LIS.renderImportBanner({
+      mode: "running",
+      state: { imported: 3, duplicates: 2, failed: 1 },
+      onStop,
+    });
+    expect(el.textContent).toMatch(/Imported 3 · Already saved 2 · Failed 1/);
+    el.querySelector("button").click();
+    expect(onStop).toHaveBeenCalled();
+  });
+
+  it("renders a done summary and a fatal-error summary", () => {
+    const done = globalThis.LIS.renderImportBanner({
+      mode: "done",
+      state: { imported: 5, duplicates: 0, failed: 0, stopped: false, fatalError: "" },
+    });
+    expect(done.textContent).toMatch(/Import finished\. Imported 5/);
+    expect(done.querySelector("button")).toBeNull();
+
+    const failed = globalThis.LIS.renderImportBanner({
+      mode: "done",
+      state: {
+        imported: 2,
+        duplicates: 0,
+        failed: 0,
+        stopped: false,
+        fatalError: "server not reachable",
+      },
+    });
+    expect(failed.textContent).toMatch(/Import stopped: server not reachable/);
+  });
+
+  it("renders the disconnected state without a button and reuses one element", () => {
+    const el = globalThis.LIS.renderImportBanner({ mode: "disconnected" });
+    expect(el.textContent).toMatch(/connect the extension/i);
+    expect(el.querySelector("button")).toBeNull();
+    const again = globalThis.LIS.renderImportBanner({ mode: "disconnected" });
+    expect(again).toBe(el);
+    expect(document.querySelectorAll("#lis-import-banner")).toHaveLength(1);
+  });
+});

@@ -94,4 +94,70 @@
 
     return state;
   };
+
+  function counts(state) {
+    return `Imported ${state.imported} · Already saved ${state.duplicates} · Failed ${state.failed}`;
+  }
+
+  function ensureBanner() {
+    let el = document.getElementById(BANNER_ID);
+    if (!el) {
+      el = document.createElement("div");
+      el.id = BANNER_ID;
+      el.className = "lis-import-banner";
+      el.setAttribute("role", "status");
+      document.documentElement.appendChild(el);
+    }
+    return el;
+  }
+
+  function removeBanner() {
+    document.getElementById(BANNER_ID)?.remove();
+  }
+
+  // view: { mode: "disconnected" | "idle" | "running" | "done",
+  //         state?, onStart?, onStop? }
+  LIS.renderImportBanner = function renderImportBanner(view) {
+    const el = ensureBanner();
+    el.textContent = "";
+
+    const text = document.createElement("span");
+    text.className = "lis-import-banner__text";
+    el.append(text);
+
+    if (view.mode === "disconnected") {
+      text.textContent =
+        "LinkedIn Saver: connect the extension (click its toolbar icon) to import these saved posts.";
+      return el;
+    }
+
+    if (view.mode === "idle") {
+      text.textContent = "Import these saved posts into LinkedIn Saver.";
+      const button = document.createElement("button");
+      button.className = "lis-import-banner__btn";
+      button.textContent = "Start import";
+      button.addEventListener("click", view.onStart);
+      el.append(button);
+      return el;
+    }
+
+    if (view.mode === "running") {
+      text.textContent = `Importing… ${counts(view.state)}`;
+      const button = document.createElement("button");
+      button.className = "lis-import-banner__btn lis-import-banner__btn--stop";
+      button.textContent = "Stop";
+      button.addEventListener("click", view.onStop);
+      el.append(button);
+      return el;
+    }
+
+    // done
+    const prefix = view.state.fatalError
+      ? `Import stopped: ${view.state.fatalError}. `
+      : view.state.stopped
+        ? "Import stopped. "
+        : "Import finished. ";
+    text.textContent = prefix + counts(view.state);
+    return el;
+  };
 })();
