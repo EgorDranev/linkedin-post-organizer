@@ -63,9 +63,9 @@
   }
 
   function freshRememberedPost() {
-    return hasFreshContext() && isReliable(recentContext.postEl)
-      ? recentContext.postEl
-      : null;
+    if (!hasFreshContext()) return null;
+    if (recentContext.source === "trigger") return recentContext.postEl;
+    return isReliable(recentContext.postEl) ? recentContext.postEl : null;
   }
 
   function resolvePostFromContext(target) {

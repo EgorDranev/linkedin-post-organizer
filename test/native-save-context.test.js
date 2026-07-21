@@ -26,6 +26,30 @@ afterEach(() => {
 });
 
 describe("native Save context", () => {
+  it("trusts fresh trigger context for an obfuscated normal feed post", async () => {
+    const { LIS, capturePost } = await loadNativeSave();
+    document.body.innerHTML = `
+      <div id="post">
+        <button id="trigger" aria-label="Open control menu" aria-expanded="true">More</button>
+        <strong>Paula Hübner Wehmeyer</strong>
+        <p>Building General Intuition; prev partner @ General Catalyst</p>
+      </div>
+      <div role="menu"><button id="save" role="menuitem">Save</button></div>`;
+
+    const post = document.getElementById("post");
+    const trigger = document.getElementById("trigger");
+    const save = document.getElementById("save");
+    LIS.findPostFrom.mockImplementation((el) => (post.contains(el) ? post : null));
+    LIS.findPosts = () => [post];
+
+    LIS.onNativeSaveClick({ target: trigger, clientX: 100, clientY: 20 });
+    LIS.onNativeSaveClick({ target: save, clientX: 900, clientY: 20 });
+
+    expect(LIS.isReliablePostCandidate(post)).toBe(false);
+    expect(capturePost).toHaveBeenCalledTimes(1);
+    expect(capturePost).toHaveBeenCalledWith(post);
+  });
+
   it("keeps trigger-bound post context when the portaled Save menu sits over an overlay", async () => {
     const { LIS, capturePost } = await loadNativeSave();
     document.body.innerHTML = `
