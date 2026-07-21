@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "./api.js";
+import { postCardDate } from "./postCardMetadata.js";
 
 const DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+(?!(?:md)\b)[a-z]{2,}(?:\/\S*)?/gi;
 const SECTION_START_RE =
@@ -584,7 +585,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const reactions = asCount(social.reactions);
   const comments = asCount(social.comments);
   const reposts = asCount(social.reposts);
-  const publishedText = post.metadata?.publishedText || "";
+  const dateMeta = postCardDate(post);
 
   // Sub-line under the author: role/company, a domain only when the save
   // points off LinkedIn ("linkedin.com" on every card says nothing), and when
@@ -700,7 +701,7 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 </span>
               )}
             </div>
-            {(headline || externalSource || publishedText) && (
+            {(headline || externalSource || dateMeta) && (
               <span className="card-source">
                 {headline && <span className="card-headline">{headline}</span>}
                 {headline && externalSource && (
@@ -709,15 +710,15 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                 {externalSource && (
                   <span className="card-source-name">{externalSource}</span>
                 )}
-                {(headline || externalSource) && publishedText && (
+                {(headline || externalSource) && dateMeta && (
                   <span className="meta-sep" aria-hidden="true">·</span>
                 )}
-                {publishedText && (
+                {dateMeta && (
                   <span
                     className="card-source-time"
-                    title={`Published ${publishedText}`}
+                    title={dateMeta.title}
                   >
-                    {publishedText}
+                    {dateMeta.text}
                   </span>
                 )}
               </span>

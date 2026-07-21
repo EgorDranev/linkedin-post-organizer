@@ -25,4 +25,13 @@ describe("post card layout", () => {
     expect(mediaImageRule).toContain("object-fit: contain");
     expect(mediaImageRule).not.toContain("height: auto");
   });
+
+  it("keeps identity metadata compact while preserving the date", () => {
+    expect(css).toMatch(/@media \(max-width: 560px\)\s*\{[\s\S]*?\.card-id\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*32px minmax\(0, 1fr\) auto/s);
+    expect(css).toMatch(/\.card-avatar\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/s);
+    expect(css).toMatch(/@media \(max-width: 560px\)\s*\{[\s\S]*?\.card-id-main\s*\{[^}]*display:\s*contents/s);
+    expect(css).toMatch(/@media \(max-width: 560px\)\s*\{[\s\S]*?\.card-source\s*\{[^}]*grid-column:\s*2 \/ 4/s);
+    expect(css).toMatch(/\.card-headline\s*\{[^}]*flex:\s*1 1 auto[^}]*min-width:\s*0/s);
+    expect(css).toMatch(/\.card-source-time\s*\{[^}]*flex:\s*0 0 auto[^}]*white-space:\s*nowrap/s);
+  });
 });
