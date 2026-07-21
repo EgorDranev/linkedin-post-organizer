@@ -39,8 +39,7 @@
     return Boolean(postEl && LIS.isReliablePostCandidate?.(postEl));
   }
 
-  function clearRememberedTrigger() {
-    if (recentContext.source !== "trigger") return;
+  function clearRememberedContext() {
     recentContext.postEl = null;
     recentContext.at = 0;
     recentContext.source = "proximity";
@@ -48,7 +47,7 @@
 
   function rememberPost(postEl, source = "direct") {
     if (!postEl?.isConnected) {
-      if (source === "trigger") clearRememberedTrigger();
+      if (source === "trigger") clearRememberedContext();
       return false;
     }
     const now = Date.now();

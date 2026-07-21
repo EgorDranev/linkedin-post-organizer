@@ -105,6 +105,36 @@ describe("native Save context", () => {
     );
   });
 
+  it("clears prior reliable context when a later overflow trigger cannot resolve", async () => {
+    const { LIS, capturePost, showToast } = await loadNativeSave();
+    document.body.innerHTML = `
+      <article id="post-a" data-reliable="true">
+        <button id="post-action">React</button>
+        <p>A reliable prior post.</p>
+      </article>
+      <button id="trigger-b" aria-label="Open control menu">More</button>
+      <div role="menu"><button id="save" role="menuitem">Save</button></div>`;
+
+    const postA = document.getElementById("post-a");
+    const postAction = document.getElementById("post-action");
+    const triggerB = document.getElementById("trigger-b");
+    const save = document.getElementById("save");
+    LIS.findPostFrom.mockImplementation((el) =>
+      postA.contains(el) ? postA : null
+    );
+
+    postAction.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    triggerB.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    triggerB.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    save.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(capturePost).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      "LinkedIn Saver: couldn't find the post — try ⋯ → Save again",
+      "error"
+    );
+  });
+
   it("keeps trigger-bound post context when the portaled Save menu sits over an overlay", async () => {
     const { LIS, capturePost } = await loadNativeSave();
     document.body.innerHTML = `
