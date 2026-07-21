@@ -371,11 +371,7 @@
         `${OVERFLOW_TRIGGER}, button.artdeco-dropdown__trigger`
       );
       if (trigger) {
-        rememberPost(
-          LIS.findPostFrom(trigger) ||
-            LIS.findPostNearPoint?.(e.clientX, e.clientY),
-          "trigger"
-        );
+        rememberPost(LIS.findPostFrom(trigger), "trigger");
         return;
       }
       rememberPostContext(e.target, "direct");

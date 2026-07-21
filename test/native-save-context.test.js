@@ -50,6 +50,30 @@ describe("native Save context", () => {
     expect(capturePost).toHaveBeenCalledWith(post);
   });
 
+  it("does not trust proximity context from an unresolved overflow trigger", async () => {
+    const { LIS, capturePost, showToast } = await loadNativeSave();
+    document.body.innerHTML = `
+      <button id="trigger" aria-label="Open control menu">More</button>
+      <div id="overlay"><p>Image in comment shared by someone else</p></div>
+      <div role="menu"><button id="save" role="menuitem">Save</button></div>`;
+
+    const trigger = document.getElementById("trigger");
+    const overlay = document.getElementById("overlay");
+    const save = document.getElementById("save");
+    LIS.findPostNearPoint.mockReturnValue(overlay);
+
+    trigger.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, clientX: 100, clientY: 20 })
+    );
+    save.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(capturePost).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      "LinkedIn Saver: couldn't find the post — try ⋯ → Save again",
+      "error"
+    );
+  });
+
   it("keeps trigger-bound post context when the portaled Save menu sits over an overlay", async () => {
     const { LIS, capturePost } = await loadNativeSave();
     document.body.innerHTML = `
