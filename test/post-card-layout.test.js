@@ -10,10 +10,19 @@ describe("post card layout", () => {
     expect(css).toMatch(/\.card-content\s*\{[^}]*padding:\s*var\(--space-4\)/s);
   });
 
-  it("lets captured media use its natural aspect ratio", () => {
+  it("contains captured media in a 16:9 preview without cropping", () => {
+    const mediaFrameRule = css.match(/\.card-media-frame\s*\{([^}]*)\}/s)?.[1] || "";
     const mediaImageRule = css.match(/\.card-media-frame img\s*\{([^}]*)\}/s)?.[1] || "";
-    expect(mediaImageRule).toContain("height: auto");
-    expect(mediaImageRule).not.toContain("max-height: 480px");
-    expect(mediaImageRule).not.toContain("aspect-ratio: auto 16 / 9");
+
+    expect(mediaFrameRule).toContain("aspect-ratio: 16 / 9");
+    expect(mediaFrameRule).toContain("overflow: hidden");
+    expect(mediaFrameRule).toContain("display: grid");
+    expect(mediaFrameRule).toContain("place-items: center");
+    expect(mediaImageRule).toContain("position: absolute");
+    expect(mediaImageRule).toContain("inset: 0");
+    expect(mediaImageRule).toContain("width: 100%");
+    expect(mediaImageRule).toContain("height: 100%");
+    expect(mediaImageRule).toContain("object-fit: contain");
+    expect(mediaImageRule).not.toContain("height: auto");
   });
 });

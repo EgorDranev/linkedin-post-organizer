@@ -891,15 +891,20 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 .card-media:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
 .card-media-frame {
   position: relative;
-  display: block;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
   background: var(--surface-3);
 }
-/* Let the captured image's intrinsic ratio determine the frame. Portrait
-   media stays complete and fills the card width without side letterboxing. */
+/* Keep the complete captured image visible inside a compact preview. */
 .card-media-frame img {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
+  object-fit: contain;
 }
 .card-media:hover .media-affordance--play { transform: translate(-50%, -50%) scale(1.05); }
 .card-media .media-affordance--play { transition: transform 0.15s var(--ease-out); }
