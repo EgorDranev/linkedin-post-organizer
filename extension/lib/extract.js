@@ -79,6 +79,29 @@
     );
   }
 
+  LIS.isReliablePostCandidate = function isReliablePostCandidate(el) {
+    if (!el?.querySelector) return false;
+    if (getIdentity(el)) return true;
+    if (
+      el.matches?.(
+        "div.feed-shared-update-v2, div.update-components-activity, .fie-impression-container, [data-view-name='feed-full-update']"
+      )
+    ) {
+      return true;
+    }
+
+    const actor = el.querySelector(".update-components-actor, .feed-shared-actor");
+    const commentary = el.querySelector(
+      ".update-components-text, .feed-shared-inline-show-more-text, [data-test-id*='commentary'], [data-test-id*='post-content']"
+    );
+    const control = el.querySelector(
+      ".feed-shared-control-menu__trigger, button[aria-label*='control menu' i], button[aria-label*='more actions' i]"
+    );
+    return Boolean(
+      (actor && (commentary || control)) || (commentary && control)
+    );
+  };
+
   function postScore(el) {
     if (!looksLikePost(el)) return 0;
     let score = 1;

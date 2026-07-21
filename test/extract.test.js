@@ -44,6 +44,30 @@ function mount(html) {
 const AVATAR = (href, src, alt, size) =>
   `<a href="${href}"><img data-w="${size}" data-h="${size}" src="${src}" alt="${alt}"></a>`;
 
+describe("reliable post candidates", () => {
+  it("accepts a structurally complete LinkedIn post", () => {
+    const post = mount(`
+      <div data-urn="urn:li:activity:7123456789012345678">
+        <div class="update-components-actor">Suprava Sabat</div>
+        <div class="update-components-text">Connect CLAUDE to LinkedIn in one click. One MCP.</div>
+      </div>
+    `);
+
+    expect(LIS.isReliablePostCandidate(post)).toBe(true);
+  });
+
+  it("rejects a comment image overlay without post structure", () => {
+    const overlay = mount(`
+      <div>
+        <strong>Egor Dranev</strong>
+        <p>Image in comment shared by Suprava Sabat</p>
+      </div>
+    `);
+
+    expect(LIS.isReliablePostCandidate(overlay)).toBe(false);
+  });
+});
+
 describe("actor identity metadata", () => {
   it("captures degree, author action, time, and public visibility from the actor", () => {
     const post = mount(`

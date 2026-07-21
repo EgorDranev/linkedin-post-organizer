@@ -4,7 +4,13 @@
 
   const MENU_HOOK_FLAG = "data-lis-menu-hook";
   const CONTEXT_TTL_MS = 20000;
-  const recentContext = { postEl: null, at: 0 };
+  const CONTEXT_QUALITY = {
+    proximity: 1,
+    direct: 2,
+    "menu-owner": 3,
+    trigger: 4,
+  };
+  const recentContext = { postEl: null, at: 0, source: "proximity" };
   const SOCIAL_BAR =
     ".feed-shared-social-action-bar, .social-details-social-actions";
 
@@ -22,25 +28,50 @@
   const OVERFLOW_TRIGGER =
     ".feed-shared-control-menu__trigger, button.feed-shared-control-menu__trigger, button.artdeco-dropdown__trigger, button[aria-label*='control menu' i], button[aria-label*='Open control menu' i], button[aria-label*='more actions' i]";
 
-  function rememberPost(postEl) {
-    if (!postEl) return;
-    recentContext.postEl = postEl;
-    recentContext.at = Date.now();
+  function hasFreshContext(now = Date.now()) {
+    return Boolean(
+      recentContext.postEl?.isConnected &&
+        now - recentContext.at < CONTEXT_TTL_MS
+    );
   }
 
-  function rememberPostContext(target) {
-    rememberPost(LIS.findPostFrom(target));
+  function isReliable(postEl) {
+    return Boolean(postEl && LIS.isReliablePostCandidate?.(postEl));
+  }
+
+  function rememberPost(postEl, source = "direct") {
+    if (!postEl?.isConnected) return false;
+    const now = Date.now();
+    if (
+      hasFreshContext(now) &&
+      CONTEXT_QUALITY[source] < CONTEXT_QUALITY[recentContext.source]
+    ) {
+      return false;
+    }
+    recentContext.postEl = postEl;
+    recentContext.at = now;
+    recentContext.source = source;
+    return true;
+  }
+
+  function rememberPostContext(target, source = "direct") {
+    rememberPost(LIS.findPostFrom(target), source);
   }
 
   function rememberPostAtPoint(x, y) {
-    rememberPost(LIS.findPostNearPoint?.(x, y));
+    rememberPost(LIS.findPostNearPoint?.(x, y), "proximity");
+  }
+
+  function freshRememberedPost() {
+    return hasFreshContext() && isReliable(recentContext.postEl)
+      ? recentContext.postEl
+      : null;
   }
 
   function resolvePostFromContext(target) {
     const direct = LIS.findPostFrom(target);
-    if (direct) return direct;
-    const fresh = Date.now() - recentContext.at < CONTEXT_TTL_MS;
-    return fresh ? recentContext.postEl : null;
+    if (isReliable(direct)) return direct;
+    return freshRememberedPost();
   }
 
   function isVisible(el) {
@@ -102,12 +133,20 @@
   }
 
   function resolvePostForSave(target) {
-    return (
-      resolvePostFromContext(target) ||
-      resolvePostFromOpenMenu() ||
-      LIS.findBestPostCandidate?.(getActionElement(target)) ||
-      null
-    );
+    const direct = LIS.findPostFrom(target);
+    if (isReliable(direct)) return direct;
+
+    const menuOwner = resolvePostFromOpenMenu();
+    if (isReliable(menuOwner)) {
+      rememberPost(menuOwner, "menu-owner");
+      return menuOwner;
+    }
+
+    const remembered = freshRememberedPost();
+    if (remembered) return remembered;
+
+    const fallback = LIS.findBestPostCandidate?.(getActionElement(target));
+    return isReliable(fallback) ? fallback : null;
   }
 
   function getActionElement(target) {
@@ -221,7 +260,7 @@
       trigger.setAttribute(MENU_HOOK_FLAG, "1");
       trigger.addEventListener(
         "click",
-        () => rememberPost(postEl),
+        () => rememberPost(postEl, "trigger"),
         true
       );
     }
@@ -281,7 +320,10 @@
       );
       return;
     }
-    rememberPost(postEl);
+    rememberPost(
+      postEl,
+      isInDropdown(getActionElement(target)) ? "menu-owner" : "direct"
+    );
 
     LIS.showToast("LinkedIn Saver: capturing saved post…", "info");
     LIS.capturePost(postEl).then((resp) => {
@@ -290,10 +332,14 @@
   }
 
   LIS.onNativeSaveClick = function onNativeSaveClick(event) {
+    const action = getActionElement(event.target);
     const trigger = event.target?.closest?.(OVERFLOW_TRIGGER);
-    if (trigger) rememberPostContext(trigger);
-    else rememberPostContext(event.target);
-    rememberPostAtPoint(event.clientX, event.clientY);
+    if (trigger) {
+      rememberPostContext(trigger, "trigger");
+    } else if (!isInDropdown(action)) {
+      rememberPostContext(event.target, "direct");
+      rememberPostAtPoint(event.clientX, event.clientY);
+    }
 
     handleSaveClick(event.target);
   };
@@ -313,24 +359,27 @@
   document.addEventListener(
     "mouseover",
     (e) => {
-      const post =
-        LIS.findPostFrom(e.target) ||
-        LIS.findPostNearPoint?.(e.clientX, e.clientY);
-      if (post) rememberPost(post);
+      rememberPostContext(e.target, "direct");
+      rememberPostAtPoint(e.clientX, e.clientY);
     },
     true
   );
   document.addEventListener(
     "pointerdown",
     (e) => {
-      const post =
-        LIS.findPostFrom(e.target) ||
-        LIS.findPostNearPoint?.(e.clientX, e.clientY);
-      if (post) rememberPost(post);
       const trigger = e.target?.closest?.(
         `${OVERFLOW_TRIGGER}, button.artdeco-dropdown__trigger`
       );
-      if (trigger) rememberPost(LIS.findPostFrom(trigger) || post);
+      if (trigger) {
+        rememberPost(
+          LIS.findPostFrom(trigger) ||
+            LIS.findPostNearPoint?.(e.clientX, e.clientY),
+          "trigger"
+        );
+        return;
+      }
+      rememberPostContext(e.target, "direct");
+      rememberPostAtPoint(e.clientX, e.clientY);
     },
     true
   );
