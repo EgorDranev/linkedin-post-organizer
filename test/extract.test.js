@@ -44,6 +44,51 @@ function mount(html) {
 const AVATAR = (href, src, alt, size) =>
   `<a href="${href}"><img data-w="${size}" data-h="${size}" src="${src}" alt="${alt}"></a>`;
 
+describe("actor identity metadata", () => {
+  it("captures degree, author action, time, and public visibility from the actor", () => {
+    const post = mount(`
+      <div class="feed-shared-update-v2" data-urn="urn:li:activity:7123456789012345678">
+        <div class="update-components-actor">
+          ${AVATAR("https://www.linkedin.com/in/harvey-knight", "https://media.licdn.com/harvey.jpg", "View Harvey Knight’s profile", 48)}
+          <span class="update-components-actor__title"><span aria-hidden="true">Harvey Knight · 2nd</span></span>
+          <span class="update-components-actor__description">Founder | Investor | Helping Family Offices &amp; HNWIs Access Private Markets</span>
+          <a class="update-components-actor__meta-link" href="https://harvey.example.com">Visit my website</a>
+          <span class="update-components-actor__sub-description">6h · <span aria-label="Visible to anyone on or off LinkedIn">🌐</span></span>
+        </div>
+        <div class="update-components-text">Identity metadata should stay separate from the post body.</div>
+      </div>
+    `);
+
+    const captured = LIS.extract(post);
+    expect(captured.author).toBe("Harvey Knight");
+    expect(captured.authorHeadline).toBe(
+      "Founder | Investor | Helping Family Offices & HNWIs Access Private Markets"
+    );
+    expect(captured.metadata.connectionDegree).toBe("2nd");
+    expect(captured.metadata.authorAction).toEqual({
+      text: "Visit my website",
+      url: "https://harvey.example.com/",
+    });
+    expect(captured.metadata.publishedText).toBe("6h");
+    expect(captured.metadata.visibility).toBe("public");
+  });
+
+  it("does not promote a body link into the author action", () => {
+    const post = mount(`
+      <div class="feed-shared-update-v2" data-urn="urn:li:activity:7123456789012345678">
+        <div class="update-components-actor">
+          <span class="update-components-actor__title">Jane Doe</span>
+        </div>
+        <div class="update-components-text">
+          Read the full article at <a href="https://example.com/article">example.com</a>
+        </div>
+      </div>
+    `);
+
+    expect(LIS.extract(post).metadata.authorAction).toBeUndefined();
+  });
+});
+
 describe("author and avatar never come from the comments block", () => {
   it("named-class post: author from actor block, comment text/links excluded", () => {
     const post = mount(`

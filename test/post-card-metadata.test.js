@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { postCardDate } from "../src/postCardMetadata.js";
+import {
+  postCardAuthorAction,
+  postCardConnectionDegree,
+  postCardDate,
+  postCardIsPublic,
+} from "../src/postCardMetadata.js";
 
 describe("post card date metadata", () => {
   it("prefers the exact publication date over captured relative text", () => {
@@ -33,5 +38,36 @@ describe("post card date metadata", () => {
     expect(
       postCardDate({ savedAt: "invalid", metadata: { publishedText: "  " } })
     ).toBeNull();
+  });
+
+  it("accepts bounded identity metadata", () => {
+    const post = {
+      metadata: {
+        connectionDegree: "2nd",
+        authorAction: { text: "Visit my website", url: "https://example.com" },
+        visibility: "public",
+      },
+    };
+
+    expect(postCardConnectionDegree(post)).toBe("2nd");
+    expect(postCardAuthorAction(post)).toEqual({
+      text: "Visit my website",
+      url: "https://example.com/",
+    });
+    expect(postCardIsPublic(post)).toBe(true);
+  });
+
+  it("rejects malformed identity metadata", () => {
+    const post = {
+      metadata: {
+        connectionDegree: "friend",
+        authorAction: { text: "Open", url: "javascript:alert(1)" },
+        visibility: "connections",
+      },
+    };
+
+    expect(postCardConnectionDegree(post)).toBe("");
+    expect(postCardAuthorAction(post)).toBeNull();
+    expect(postCardIsPublic(post)).toBe(false);
   });
 });

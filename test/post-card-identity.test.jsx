@@ -32,6 +32,43 @@ describe("post card identity metadata", () => {
 
     expect(screen.getByText("NYT Bestselling Author | Entrepreneur")).toBeInTheDocument();
     expect(screen.getByText("Saved Jul 21 2026")).toBeInTheDocument();
-    expect(container.querySelectorAll(".card-source .meta-sep")).toHaveLength(1);
+    expect(container.querySelectorAll(".card-source .meta-sep")).toHaveLength(0);
+  });
+
+  it("renders the complete LinkedIn identity hierarchy", () => {
+    const completePost = {
+      ...post,
+      author: "Harvey Knight",
+      authorHeadline:
+        "Founder | Investor | Helping Family Offices & HNWIs Access Private Markets",
+      metadata: {
+        connectionDegree: "2nd",
+        authorAction: {
+          text: "Visit my website",
+          url: "https://harvey.example.com",
+        },
+        publishedText: "6h",
+        visibility: "public",
+      },
+    };
+
+    render(
+      <PostCard
+        post={completePost}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onTagClick={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Harvey Knight")).toBeInTheDocument();
+    expect(screen.getByText("2nd")).toBeInTheDocument();
+    expect(screen.getByText(completePost.authorHeadline)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Visit my website" })).toHaveAttribute(
+      "href",
+      "https://harvey.example.com/"
+    );
+    expect(screen.getByText("6h")).toBeInTheDocument();
+    expect(screen.getByLabelText("Public post")).toBeInTheDocument();
   });
 });

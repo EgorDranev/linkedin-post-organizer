@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "./api.js";
-import { postCardDate } from "./postCardMetadata.js";
+import {
+  postCardAuthorAction,
+  postCardConnectionDegree,
+  postCardDate,
+  postCardIsPublic,
+} from "./postCardMetadata.js";
 
 const DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+(?!(?:md)\b)[a-z]{2,}(?:\/\S*)?/gi;
 const SECTION_START_RE =
@@ -423,6 +428,15 @@ const RepostIcon = (props) => (
   </svg>
 );
 
+const PublicIcon = (props) => (
+  <svg width="13" height="13" {...ICON_BASE} {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18" />
+    <path d="M12 3a14 14 0 0 1 0 18" />
+    <path d="M12 3a14 14 0 0 0 0 18" />
+  </svg>
+);
+
 // Filled triangle reads as "play" at small sizes; the others share ICON_BASE.
 const PlayIcon = (props) => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
@@ -586,10 +600,12 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
   const comments = asCount(social.comments);
   const reposts = asCount(social.reposts);
   const dateMeta = postCardDate(post);
+  const connectionDegree = postCardConnectionDegree(post);
+  const authorAction = postCardAuthorAction(post);
+  const isPublic = postCardIsPublic(post);
 
-  // Sub-line under the author: role/company, a domain only when the save
-  // points off LinkedIn ("linkedin.com" on every card says nothing), and when
-  // the post was published — LinkedIn puts the timestamp on this line too.
+  // The third identity row keeps provenance compact: author action, an external
+  // source only when the save points off LinkedIn, publication time, visibility.
   const externalSource = /^linkedin(?:\.com)?$/i.test(source) ? "" : source;
 
   useEffect(() => {
@@ -700,17 +716,37 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                   {author || "Unknown author"}
                 </span>
               )}
+              {connectionDegree && (
+                <>
+                  <span className="meta-sep" aria-hidden="true">·</span>
+                  <span className="card-connection">{connectionDegree}</span>
+                </>
+              )}
             </div>
-            {(headline || externalSource || dateMeta) && (
+            {headline && (
+              <span className="card-headline-row" title={headline}>
+                {headline}
+              </span>
+            )}
+            {(authorAction || externalSource || dateMeta || isPublic) && (
               <span className="card-source">
-                {headline && <span className="card-headline">{headline}</span>}
-                {headline && externalSource && (
+                {authorAction && (
+                  <a
+                    className="card-author-action"
+                    href={authorAction.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {authorAction.text}
+                  </a>
+                )}
+                {authorAction && externalSource && (
                   <span className="meta-sep" aria-hidden="true">·</span>
                 )}
                 {externalSource && (
                   <span className="card-source-name">{externalSource}</span>
                 )}
-                {(headline || externalSource) && dateMeta && (
+                {(authorAction || externalSource) && dateMeta && (
                   <span className="meta-sep" aria-hidden="true">·</span>
                 )}
                 {dateMeta && (
@@ -719,6 +755,15 @@ export function PostCard({ post, onUpdated, onDeleted, onTagClick, activeTags = 
                     title={dateMeta.title}
                   >
                     {dateMeta.text}
+                  </span>
+                )}
+                {isPublic && (
+                  <span
+                    className="card-visibility"
+                    aria-label="Public post"
+                    title="Public post"
+                  >
+                    <PublicIcon />
                   </span>
                 )}
               </span>

@@ -31,3 +31,28 @@ export function postCardDate(post) {
 
   return null;
 }
+
+export function postCardConnectionDegree(post) {
+  const value = String(post?.metadata?.connectionDegree || "")
+    .trim()
+    .toLowerCase();
+  return /^(?:1st|2nd|3rd)$/.test(value) ? value : "";
+}
+
+export function postCardAuthorAction(post) {
+  const action = post?.metadata?.authorAction;
+  const text = String(action?.text || "").trim();
+  if (!text) return null;
+
+  try {
+    const url = new URL(String(action?.url || ""));
+    if (!/^https?:$/.test(url.protocol)) return null;
+    return { text, url: url.href };
+  } catch {
+    return null;
+  }
+}
+
+export function postCardIsPublic(post) {
+  return post?.metadata?.visibility === "public";
+}

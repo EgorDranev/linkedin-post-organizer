@@ -774,12 +774,71 @@
     return candidates[0] || "";
   }
 
+  const ACTOR_SCOPE_SELECTOR = [
+    ".update-components-actor",
+    ".feed-shared-actor",
+    "[data-test-id='main-feed-activity-card__actor']",
+  ].join(", ");
+
+  function actorScope(postEl) {
+    return postEl?.matches?.(ACTOR_SCOPE_SELECTOR)
+      ? postEl
+      : postEl?.querySelector?.(ACTOR_SCOPE_SELECTOR);
+  }
+
+  function extractConnectionDegree(postEl) {
+    const actor = actorScope(postEl);
+    const text = cleanLinkedInText(clean(actor));
+    return (
+      text.match(/(?:^|[•·\s])((?:1st|2nd|3rd))(?:\b|$)/i)?.[1]?.toLowerCase() ||
+      ""
+    );
+  }
+
+  function extractAuthorAction(postEl) {
+    const actor = actorScope(postEl);
+    for (const link of actor?.querySelectorAll?.("a[href]") || []) {
+      const url = canonicalLinkedInUrl(absoluteUrl(attr(link, "href")));
+      const label = cleanLinkedInText(attr(link, "aria-label") || clean(link));
+      if (!url || !/^https?:/i.test(url) || !label || isChromeText(label)) continue;
+      if (/linkedin\.com\/(?:in|company|feed\/update)\//i.test(url)) continue;
+      return { text: label.slice(0, 160), url };
+    }
+    return null;
+  }
+
+  function extractPublishedText(postEl) {
+    const raw = firstText(postEl, [
+      "time",
+      ".update-components-actor__sub-description",
+      ".feed-shared-actor__sub-description",
+      ".update-components-actor__sub-description span[aria-hidden='true']",
+    ]);
+    return raw
+      .replace(/visible to anyone on or off linkedin|public/gi, "")
+      .replace(/[🌐🌎🌍🌏]/gu, "")
+      .replace(/^[\s•·]+|[\s•·]+$/g, "")
+      .trim();
+  }
+
+  function extractVisibility(postEl) {
+    const actor = actorScope(postEl);
+    const labels = [...(actor?.querySelectorAll?.("[aria-label], [title]") || [])]
+      .map((el) => `${attr(el, "aria-label")} ${attr(el, "title")}`)
+      .join(" ");
+    const text = `${labels} ${clean(actor)}`;
+    return /visible to anyone on or off linkedin|\bpublic\b|[🌐🌎🌍🌏]/iu.test(text)
+      ? "public"
+      : "";
+  }
+
   function cleanAuthor(value) {
     const raw = value?.nodeType ? clean(value) : value;
     const text = cleanLinkedInText(raw)
       .replace(/\s+(?:View|Open)\s+.+?\s+profile.*$/i, "")
       .replace(/\b(?:View|Open)\s+(.+?)'?s?\s+profile\b/i, "$1")
       .replace(/\s+following\b/i, "")
+      .replace(/\s*[•·]\s*(?:1st|2nd|3rd)\b.*$/i, "")
       .trim();
     return text.split("\n").map((line) => line.trim()).filter(Boolean)[0] || "";
   }
@@ -1666,13 +1725,7 @@
       authorProfileUrl = null;
       authorImage = "";
     }
-    const publishedText =
-      firstText(postEl, [
-        ".update-components-actor__sub-description",
-        ".feed-shared-actor__sub-description",
-        ".update-components-actor__sub-description span[aria-hidden='true']",
-        "time",
-      ]) || null;
+    const publishedText = extractPublishedText(postEl) || null;
     let text =
       extractPostText(postEl) ||
       firstText(postEl, [
@@ -1706,8 +1759,11 @@
       urn,
       authorProfileUrl,
       authorImage,
+      connectionDegree: extractConnectionDegree(postEl) || null,
+      authorAction: extractAuthorAction(postEl),
       publishedText,
       publishedDate,
+      visibility: extractVisibility(postEl) || null,
       links,
       capturedAt: new Date().toISOString(),
       capturedFrom: location.href,
