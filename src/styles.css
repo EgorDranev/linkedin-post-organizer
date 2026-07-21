@@ -81,6 +81,7 @@
 
   /* ---- Layout ---- */
   --app-max: 1040px;
+  --card-max: 720px;
   --header-h: 60px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -403,7 +404,11 @@ textarea:focus {
 .empty-onboarding p { margin: 0; max-width: 42ch; line-height: 1.55; }
 .empty-onboarding .btn-primary { margin-top: var(--space-2); }
 
-.section { margin-top: var(--space-6); }
+.section {
+  width: 100%;
+  max-width: var(--card-max);
+  margin: var(--space-6) auto 0;
+}
 .section:first-of-type { margin-top: var(--space-5); }
 .section-title {
   display: flex;
@@ -561,17 +566,17 @@ textarea:focus {
 .card-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  flex: 0 0 auto;
+  gap: var(--space-1);
   margin-left: auto;
-  padding-top: 1px;
 }
 .card-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--r-xs);
@@ -585,14 +590,14 @@ textarea:focus {
 /* destructive action sits apart from the frequent-use buttons, behind a divider */
 .card-actions .card-btn--danger {
   position: relative;
-  margin-left: var(--space-3);
+  margin-left: var(--space-2);
 }
 .card-actions .card-btn--danger::before {
   content: "";
   position: absolute;
   top: 4px;
   bottom: 4px;
-  left: -8px;
+  left: -6px;
   width: 1px;
   background: var(--line);
 }
@@ -613,14 +618,14 @@ textarea:focus {
 }
 
 /* content */
-.card-content { padding: var(--space-5) var(--space-5) var(--space-4); }
+.card-content { padding: var(--space-4); }
 
 /* identity header — author is the primary recognition key */
 .card-id { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
 .card-avatar {
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   border-radius: var(--r-full);
@@ -708,7 +713,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 .meta-sep { flex: 0 0 auto; opacity: 0.5; }
 
 .card-post-text {
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
   max-width: 68ch; /* readable measure — never the full 1040px column */
   color: var(--ink);
   font-size: 15px;
@@ -717,7 +722,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   overflow-wrap: anywhere;
 }
 .card-text-block {
-  margin: 0 0 var(--space-5);
+  margin: 0 0 var(--space-4);
   white-space: pre-wrap;
 }
 /* last-of-type, not last-child — the "…see more" button can follow the last
@@ -735,7 +740,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 .card-text-block--source a { color: inherit; text-decoration: none; }
 .card-text-block--source a:hover { text-decoration: underline; }
 .card-text-block--question {
-  margin-top: var(--space-5);
+  margin-top: var(--space-4);
   font-weight: 700;
 }
 /* line-split captures (lists, link stacks) get line spacing, not paragraph
@@ -789,7 +794,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1) var(--space-4);
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
   color: var(--muted);
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
@@ -872,7 +877,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 .card-media {
   display: block;
   width: 100%;
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -889,15 +894,12 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   display: block;
   background: var(--surface-3);
 }
-/* Natural aspect ratio so square/portrait images aren't cropped; 16:9 is only
-   the pre-load placeholder ratio (layout stability). Tall images cap at
-   max-height and letterbox against the frame background. */
+/* Let the captured image's intrinsic ratio determine the frame. Portrait
+   media stays complete and fills the card width without side letterboxing. */
 .card-media-frame img {
   width: 100%;
-  aspect-ratio: auto 16 / 9;
-  max-height: 480px;
+  height: auto;
   display: block;
-  object-fit: contain;
 }
 .card-media:hover .media-affordance--play { transform: translate(-50%, -50%) scale(1.05); }
 .card-media .media-affordance--play { transition: transform 0.15s var(--ease-out); }
@@ -932,7 +934,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
 }
 .card-media-pill {
   display: inline-flex;
@@ -957,7 +959,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
 }
 
 /* the post's own hashtags — read-only recognition aid; click adopts as a tag */
-.card-topics { display: flex; flex-wrap: wrap; gap: var(--space-1) 10px; margin-top: var(--space-4); }
+.card-topics { display: flex; flex-wrap: wrap; gap: var(--space-1) 10px; margin-top: var(--space-3); }
 .topic-chip {
   padding: 0;
   border: none;
@@ -990,7 +992,7 @@ a.card-author-name:hover { color: var(--accent); text-decoration: underline; }
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
-  margin-top: var(--space-5);
+  margin-top: var(--space-4);
   padding-top: var(--space-3);
   border-top: 1px solid var(--line);
   position: relative;
@@ -1457,6 +1459,7 @@ button.danger:hover { background: var(--danger-hover); }
   .topbar-right { width: 100%; justify-content: flex-start; }
   .count { margin-right: auto; }
   .app-body { padding: var(--space-4); }
+  .card-btn { width: 40px; height: 40px; }
   .add-row { flex-direction: column; gap: var(--space-3); }
   .reader-backdrop { align-items: stretch; padding: 0; }
   .reader-modal { max-height: 100vh; border-radius: 0; border: none; }
