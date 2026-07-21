@@ -74,6 +74,34 @@ describe("native Save context", () => {
     );
   });
 
+  it("does not restore stale context from a hooked unresolved trigger", async () => {
+    const { LIS, capturePost, showToast } = await loadNativeSave();
+    document.body.innerHTML = `
+      <div id="post">
+        <button id="trigger" aria-label="Open control menu">More</button>
+        <p>An unreliable generic post.</p>
+      </div>
+      <div role="menu"><button id="save" role="menuitem">Save</button></div>`;
+
+    const post = document.getElementById("post");
+    const trigger = document.getElementById("trigger");
+    const save = document.getElementById("save");
+    LIS.hookPost(post);
+    LIS.findPostFrom.mockReturnValue(null);
+
+    trigger.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true })
+    );
+    save.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(LIS.isReliablePostCandidate(post)).toBe(false);
+    expect(capturePost).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      "LinkedIn Saver: couldn't find the post — try ⋯ → Save again",
+      "error"
+    );
+  });
+
   it("clears prior trigger context when a later overflow trigger cannot resolve", async () => {
     const { LIS, capturePost, showToast } = await loadNativeSave();
     document.body.innerHTML = `

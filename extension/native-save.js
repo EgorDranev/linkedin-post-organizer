@@ -269,7 +269,7 @@
       trigger.setAttribute(MENU_HOOK_FLAG, "1");
       trigger.addEventListener(
         "click",
-        () => rememberPost(postEl, "trigger"),
+        () => rememberPost(LIS.findPostFrom(trigger), "trigger"),
         true
       );
     }
